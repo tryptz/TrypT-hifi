@@ -19,10 +19,22 @@ if (typeof window === 'undefined') {
 }
 
 export function testForRequirements() {
-    if (process.env.QOBUZ_APP_ID?.length === 0) throw new Error('Deployment is missing QOBUZ_APP_ID environment variable.');
-    if (process.env.QOBUZ_AUTH_TOKENS?.length === 0) throw new Error('Deployment is missing QOBUZ_AUTH_TOKENS environment variable.');
-    if (process.env.QOBUZ_SECRET?.length === 0) throw new Error('Deployment is missing QOBUZ_SECRET environment variable.');
-    if (process.env.QOBUZ_API_BASE?.length === 0) throw new Error('Deployment is missing QOBUZ_API_BASE environment variable.');
+    if (!process.env.QOBUZ_APP_ID || process.env.QOBUZ_APP_ID.length === 0) throw new Error('Deployment is missing QOBUZ_APP_ID environment variable.');
+    if (!process.env.QOBUZ_SECRET || process.env.QOBUZ_SECRET.length === 0) throw new Error('Deployment is missing QOBUZ_SECRET environment variable.');
+    if (!process.env.QOBUZ_API_BASE || process.env.QOBUZ_API_BASE.length === 0) throw new Error('Deployment is missing QOBUZ_API_BASE environment variable.');
+    
+    if (!process.env.QOBUZ_AUTH_TOKENS || process.env.QOBUZ_AUTH_TOKENS.length === 0) throw new Error('Deployment is missing QOBUZ_AUTH_TOKENS environment variable.');
+    
+    // Check if it's an empty array string
+    try {
+        const tokens = JSON.parse(process.env.QOBUZ_AUTH_TOKENS);
+        if (Array.isArray(tokens) && tokens.length === 0 && tokenCountriesMap.length === 0) {
+            throw new Error('QOBUZ_AUTH_TOKENS is an empty array and no tokenCountriesMap is configured.');
+        }
+    } catch {
+        // If it fails to parse as JSON but has content, that's fine, it will be treated as a single token.
+    }
+    
     return true;
 }
 

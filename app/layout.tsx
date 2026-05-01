@@ -22,7 +22,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-    metadataBase: new URL('https://www.qobuz-dl.com/'), // Site URL
+    metadataBase: new URL('https://trypt.hifi/'), // Site URL
     title: {
         default: process.env.NEXT_PUBLIC_APPLICATION_NAME + ' - A frontend browser client for downloading music for Qobuz.',
         template: process.env.NEXT_PUBLIC_APPLICATION_NAME!

@@ -18,10 +18,35 @@ const nextConfig: NextConfig = {
             {
                 source: '/api/:path*',
                 headers: [
-                    { key: 'Access-Control-Allow-Origin', value: '*' },
-                    { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, DELETE, OPTIONS' },
-                    { key: 'Access-Control-Allow-Headers', value: 'X-Requested-With, Content-Type, Authorization, Token-Country' },
-                    { key: 'Access-Control-Max-Age', value: '86400' }
+                    {
+                        key: 'Access-Control-Allow-Origin',
+                        value: '*'
+                    },
+                    {
+                        key: 'Access-Control-Allow-Methods',
+                        value: 'GET, POST, PUT, DELETE, OPTIONS'
+                    },
+                    {
+                        key: 'Access-Control-Allow-Headers',
+                        value: 'X-Requested-With, Content-Type, Authorization, Token-Country'
+                    },
+                    {
+                        key: 'Cross-Origin-Resource-Policy',
+                        value: 'cross-origin'
+                    }
+                ]
+            },
+            {
+                source: '/(.*)',
+                headers: [
+                    {
+                        key: 'Cross-Origin-Opener-Policy',
+                        value: 'same-origin'
+                    },
+                    {
+                        key: 'Cross-Origin-Embedder-Policy',
+                        value: 'require-corp'
+                    }
                 ]
             }
         ];

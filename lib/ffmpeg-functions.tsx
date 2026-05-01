@@ -94,7 +94,7 @@ export async function applyMetadata(
     if (resultData.isrc) metadata += `\nisrc=${resultData.isrc}`;
     if (upc) metadata += `\nbarcode=${upc}`;
     if (resultData.track_number) metadata += `\ntrack=${resultData.track_number}`;
-    await ffmpeg.writeFile('input.' + extension, new Uint8Array(trackBuffer));
+    await ffmpeg.writeFile('input.' + extension, new Uint8Array(trackBuffer.slice(0)));
     const encoder = new TextEncoder();
     await ffmpeg.writeFile('metadata.txt', encoder.encode(metadata));
     if (!(albumArt === false)) {
@@ -109,12 +109,12 @@ export async function applyMetadata(
                 'albumArt.jpg',
                 new Uint8Array(
                     albumArt
-                        ? albumArt
+                        ? albumArt.slice(0)
                         : (
                               await axios.get((await resizeImage(getFullResImageUrl(resultData), settings.albumArtSize, settings.albumArtQuality)) as string, {
                                   responseType: 'arraybuffer'
                               })
-                          ).data
+                          ).data.slice(0)
                 )
             );
     }
@@ -175,7 +175,7 @@ export async function fixMD5Hash(trackBuffer: ArrayBuffer | Uint8Array, setStatu
                 }
             },
             fileData: {
-                'input.flac': new Uint8Array(trackBuffer)
+                'input.flac': new Uint8Array(trackBuffer.slice(0))
             }
         });
     });
@@ -183,10 +183,13 @@ export async function fixMD5Hash(trackBuffer: ArrayBuffer | Uint8Array, setStatu
 
 export async function loadFFmpeg(ffmpeg: FFmpegType) {
     if (!ffmpeg.loaded) {
-        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+        const coreBaseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+        const baseURL = window.location.origin;
+        
         await ffmpeg.load({
-            coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-            wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+            classWorkerURL: `${baseURL}/ffmpeg/worker.js`,
+            coreURL: await toBlobURL(`${coreBaseURL}/ffmpeg-core.js`, 'text/javascript'),
+            wasmURL: await toBlobURL(`${coreBaseURL}/ffmpeg-core.wasm`, 'application/wasm')
         });
     }
 }

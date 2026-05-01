@@ -276,7 +276,6 @@ const SearchView = () => {
                     ) : (
                         <>
                             <h1 className='text-4xl font-bold text-center'>{process.env.NEXT_PUBLIC_APPLICATION_NAME}</h1>
-                            <p className='text-md text-center font-medium text-muted-foreground'>The simplest music downloader</p>
                         </>
                     )}
                 </motion.div>

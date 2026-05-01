@@ -232,7 +232,7 @@ export const createDownloadJob = async (
                     setStatusBar((statusBar) => ({ ...statusBar, progress: 0, description: `Zipping album...` }));
                     await new Promise((resolve) => setTimeout(resolve, 500));
                     const zipFiles = {
-                        'cover.jpg': new Uint8Array(albumArt),
+                        'cover.jpg': albumArt ? new Uint8Array(albumArt) : new Uint8Array(0),
                         ...trackBuffers.reduce(
                             (acc, buffer, index) => {
                                 if (buffer) {
