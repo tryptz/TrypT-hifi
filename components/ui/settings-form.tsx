@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from './input';
 import { ModeToggle } from '../mode-toggle';
+import QobuzAccountSection from './qobuz-account-section';
 import { nameVariables, SettingsProps, useSettings } from '@/lib/settings-provider';
 import { Separator } from './separator';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -57,6 +58,14 @@ const SettingsForm = () => {
                             <SheetDescription>Change the way {process.env.NEXT_PUBLIC_APPLICATION_NAME} looks</SheetDescription>
                         </div>
                         <ModeToggle />
+                    </SheetHeader>
+                    <Separator />
+                    <SheetHeader>
+                        <div className='flex flex-col my-1'>
+                            <SheetTitle>Qobuz Account</SheetTitle>
+                            <SheetDescription>Log in with your email &amp; password or paste a user auth token. Saved on this server.</SheetDescription>
+                        </div>
+                        <QobuzAccountSection open={open} />
                     </SheetHeader>
                     <Separator />
                     <SheetHeader>

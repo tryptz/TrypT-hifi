@@ -4,6 +4,9 @@
 .env*
 !.env.example
 
+# Runtime Qobuz auth token store
+/data/
+
 # Compiled output
 /dist
 /tmp
@@ -14,6 +17,12 @@
 node_modules/
 npm-debug.log
 yarn-error.log
+
+# Next.js build output
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
 
 # IDEs and editors
 .idea/
