@@ -2,6 +2,10 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
     output: "standalone",
+    // A parent lockfile (/root/package-lock.json) makes Next infer the wrong
+    // workspace root for standalone file tracing. Pin it to this project dir so
+    // the standalone bundle traces only this app's files.
+    outputFileTracingRoot: process.cwd(),
     images: {
         remotePatterns: [
             {

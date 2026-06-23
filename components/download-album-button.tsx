@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button, ButtonProps } from './ui/button';
 import { DownloadIcon, FileArchiveIcon, MusicIcon } from 'lucide-react';
-import { StatusBarProps } from './status-bar/status-bar';
+import { DownloadsApi } from '@/lib/downloads/downloads-provider';
 import { FFmpegType } from '@/lib/ffmpeg-functions';
 import { SettingsProps } from '@/lib/settings-provider';
 import { FetchedQobuzAlbum, formatTitle, getFullAlbumInfo, QobuzAlbum } from '@/lib/qobuz-dl';
@@ -11,7 +11,7 @@ import { useCountry } from '@/lib/country-provider';
 
 export interface DownloadAlbumButtonProps extends ButtonProps {
     result: QobuzAlbum;
-    setStatusBar: React.Dispatch<React.SetStateAction<StatusBarProps>>;
+    downloads: DownloadsApi;
     ffmpegState: FFmpegType;
     settings: SettingsProps;
     fetchedAlbumData: FetchedQobuzAlbum | null;
@@ -31,7 +31,7 @@ const DownloadButton = React.forwardRef<HTMLButtonElement, DownloadAlbumButtonPr
             onOpen,
             onClose,
             result,
-            setStatusBar,
+            downloads,
             ffmpegState,
             settings,
             toast,
@@ -51,14 +51,14 @@ const DownloadButton = React.forwardRef<HTMLButtonElement, DownloadAlbumButtonPr
             <>
                 <DropdownMenu open={open} onOpenChange={setOpen}>
                     <DropdownMenuTrigger asChild>
-                        <Button className={className} ref={ref} variant={variant} size={size} asChild={asChild} {...props}>
+                        <Button className={className} ref={ref} variant={variant} size={size} asChild={asChild} aria-label={`Download ${formatTitle(result)}`} {...props}>
                             <DownloadIcon className='!size-4' />
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
                         <DropdownMenuItem
                             onClick={() => {
-                                createDownloadJob(result, setStatusBar, ffmpegState, settings, toast, fetchedAlbumData, setFetchedAlbumData, country);
+                                createDownloadJob(result, downloads, ffmpegState, settings, toast, fetchedAlbumData, setFetchedAlbumData, country);
                                 toast({
                                     title: `Added '${formatTitle(result)}'`,
                                     description: 'The album has been added to the queue'
@@ -76,7 +76,7 @@ const DownloadButton = React.forwardRef<HTMLButtonElement, DownloadAlbumButtonPr
                                     if (track.streamable) {
                                         await createDownloadJob(
                                             { ...track, album: albumData },
-                                            setStatusBar,
+                                            downloads,
                                             ffmpegState,
                                             settings,
                                             toast,

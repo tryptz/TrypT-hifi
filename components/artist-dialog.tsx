@@ -13,7 +13,7 @@ import { Skeleton } from './ui/skeleton';
 import { useFFmpeg } from '@/lib/ffmpeg-provider';
 import { useInView } from 'react-intersection-observer';
 import { useSettings } from '@/lib/settings-provider';
-import { useStatusBar } from '@/lib/status-bar/context';
+import { useDownloads } from '@/lib/downloads/downloads-provider';
 import { useTheme } from 'next-themes';
 import { useToast } from '@/hooks/use-toast';
 import { useCountry } from '@/lib/country-provider';
@@ -98,7 +98,7 @@ const ArtistDialog = ({ open, setOpen, artist }: { open: boolean; setOpen: (open
         if (open) getArtistData();
     }, [open]);
 
-    const { setStatusBar } = useStatusBar();
+    const downloads = useDownloads();
     const { toast } = useToast();
     const { settings } = useSettings();
     const { ffmpegState } = useFFmpeg();
@@ -147,13 +147,14 @@ const ArtistDialog = ({ open, setOpen, artist }: { open: boolean; setOpen: (open
                                 <Button
                                     size='icon'
                                     variant='ghost'
+                                    aria-label='Download entire discography'
                                     onClick={() => {
                                         downloadArtistDiscography(
                                             artistResults,
                                             setArtistResults,
                                             fetchMore,
                                             'all',
-                                            setStatusBar,
+                                            downloads,
                                             settings,
                                             toast,
                                             ffmpegState!,
@@ -242,7 +243,7 @@ const ArtistReleaseSection = ({
         if (isInView && !searching) fetchMore(category.value, artistResults!);
     }, [isInView]);
 
-    const { setStatusBar } = useStatusBar();
+    const downloads = useDownloads();
     const { toast } = useToast();
     const { settings } = useSettings();
     const { ffmpegState } = useFFmpeg();
@@ -262,7 +263,7 @@ const ArtistReleaseSection = ({
                                     setArtistResults,
                                     fetchMore,
                                     category.value,
-                                    setStatusBar,
+                                    downloads,
                                     settings,
                                     toast,
                                     ffmpegState!

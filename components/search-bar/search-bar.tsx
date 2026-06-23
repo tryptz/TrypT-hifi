@@ -128,6 +128,7 @@ const SearchBar = ({
             </div>
             <Button
                 size='icon'
+                aria-label='Search'
                 className='w-11 h-11 shrink-0 disabled:bg-muted bg-primary disabled:text-foreground text-primary-foreground hover:text-primary-foreground hover:bg-primary/90'
                 variant='ghost'
                 onClick={() => {

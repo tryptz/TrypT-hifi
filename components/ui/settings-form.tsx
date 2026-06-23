@@ -7,8 +7,9 @@ import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from './input';
+import InstanceModeSection from './instance-mode-section';
 import { ModeToggle } from '../mode-toggle';
-import QobuzAccountSection from './qobuz-account-section';
+import { RadioTowerIcon } from 'lucide-react';
 import { nameVariables, SettingsProps, useSettings } from '@/lib/settings-provider';
 import { Separator } from './separator';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -62,10 +63,13 @@ const SettingsForm = () => {
                     <Separator />
                     <SheetHeader>
                         <div className='flex flex-col my-1'>
-                            <SheetTitle>Qobuz Account</SheetTitle>
-                            <SheetDescription>Log in with your email &amp; password or paste a user auth token. Saved on this server.</SheetDescription>
+                            <SheetTitle className='flex items-center gap-2'>
+                                <RadioTowerIcon className='size-4' />
+                                Instance Mode
+                            </SheetTitle>
+                            <SheetDescription>Serve this server as the Qobuz backend for the Tryptify (monotrypt.android) app.</SheetDescription>
                         </div>
-                        <QobuzAccountSection open={open} />
+                        <InstanceModeSection open={open} />
                     </SheetHeader>
                     <Separator />
                     <SheetHeader>
@@ -290,6 +294,22 @@ const SettingsForm = () => {
                             <Checkbox
                                 checked={settings.fixMD5}
                                 onCheckedChange={(checked: boolean) => setSettings((settings) => ({ ...settings, fixMD5: checked }))}
+                            />
+                        </div>
+                    </SheetHeader>
+                    <Separator />
+                    <SheetHeader>
+                        <div className='flex items-center gap-2'>
+                            <div className='flex flex-col'>
+                                <p className='font-medium'>Save to library</p>
+                                <p className='text-xs text-muted-foreground'>
+                                    If enabled, downloaded tracks are also kept in an in-app library so you can play them in the built-in player. Albums save
+                                    each track individually. Uses extra browser storage.
+                                </p>
+                            </div>
+                            <Checkbox
+                                checked={settings.saveToLibrary}
+                                onCheckedChange={(checked: boolean) => setSettings((settings) => ({ ...settings, saveToLibrary: checked }))}
                             />
                         </div>
                     </SheetHeader>

@@ -6,7 +6,13 @@ export const dynamic = 'force-dynamic';
 
 const searchParamsSchema = z.object({
     q: z.string().min(1, 'Query is required'),
-    offset: z.preprocess((a) => parseInt(a as string), z.number().max(1000, 'Offset must be less than 1000').min(0, 'Offset must be 0 or greater').default(0))
+    // Treat an omitted/blank offset as "use the default (0)" instead of feeding
+    // parseInt(undefined) -> NaN into z.number() (which would 400). Instance
+    // clients that only send `q` should still get results.
+    offset: z.preprocess(
+        (a) => (a === undefined || a === '' ? undefined : parseInt(a as string)),
+        z.number().max(1000, 'Offset must be less than 1000').min(0, 'Offset must be 0 or greater').default(0)
+    )
 });
 
 export async function GET(request: NextRequest) {

@@ -1,7 +1,6 @@
 import { formatArtists, formatTitle, getAlbum, getFullResImageUrl, QobuzTrack } from './qobuz-dl';
 import axios from 'axios';
 import { SettingsProps } from './settings-provider';
-import { StatusBarProps } from '@/components/status-bar/status-bar';
 import { resizeImage } from './utils';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { toBlobURL } from '@ffmpeg/util';
@@ -40,7 +39,7 @@ export async function applyMetadata(
     resultData: QobuzTrack,
     ffmpeg: FFmpegType,
     settings: SettingsProps,
-    setStatusBar?: React.Dispatch<React.SetStateAction<StatusBarProps>>,
+    onStage?: (stage: string) => void,
     albumArt?: ArrayBuffer | false,
     upc?: string
 ) {
@@ -51,12 +50,7 @@ export async function applyMetadata(
     const extension = codecMap[settings.outputCodec].extension;
     if (!skipRencode) {
         const inputExtension = settings.outputQuality === '5' ? 'mp3' : 'flac';
-        if (setStatusBar)
-            setStatusBar((prev) => {
-                if (prev.processing) {
-                    return { ...prev, description: 'Re-encoding track...' };
-                } else return prev;
-            });
+        onStage?.('Re-encoding track…');
         await ffmpeg.writeFile('input.' + inputExtension, new Uint8Array(trackBuffer));
         await ffmpeg.exec([
             '-i',
@@ -73,7 +67,7 @@ export async function applyMetadata(
     }
     if (!settings.applyMetadata) return trackBuffer;
     if (settings.outputCodec === 'WAV') return trackBuffer;
-    if (setStatusBar) setStatusBar((prev) => ({ ...prev, description: 'Applying metadata...' }));
+    onStage?.('Applying metadata…');
     const artists = resultData.album.artists === undefined ? [resultData.performer] : resultData.album.artists;
     let metadata = `;FFMETADATA1`;
     metadata += `\ntitle=${formatTitle(resultData)}`;
@@ -150,15 +144,19 @@ export async function applyMetadata(
     return output;
 }
 
-export async function fixMD5Hash(trackBuffer: ArrayBuffer | Uint8Array, setStatusBar?: React.Dispatch<React.SetStateAction<StatusBarProps>>): Promise<Blob> {
+export async function fixMD5Hash(
+    trackBuffer: ArrayBuffer | Uint8Array,
+    onStage?: (stage: string) => void,
+    onProgress?: (pct: number) => void
+): Promise<Blob> {
     return new Promise((resolve) => {
-        setStatusBar?.((prev) => ({ ...prev, description: 'Fixing MD5 hash...', progress: 0 }));
+        onStage?.('Fixing MD5 hash…');
         const worker = new Worker('flac/EmsWorkerProxy.js');
         worker.onmessage = function (e) {
             if (e.data && e.data.reply === 'progress') {
                 const vals = e.data.values;
                 if (vals[1]) {
-                    setStatusBar?.((prev) => ({ ...prev, progress: Math.floor((vals[0] / vals[1]) * 100) }));
+                    onProgress?.(Math.floor((vals[0] / vals[1]) * 100));
                 }
             } else if (e.data && e.data.reply === 'done') {
                 for (const fileName in e.data.values) {

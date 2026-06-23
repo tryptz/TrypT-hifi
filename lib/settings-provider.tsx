@@ -13,6 +13,7 @@ export type SettingsProps = {
     albumArtQuality: number;
     zipName: string;
     trackName: string;
+    saveToLibrary: boolean;
 };
 
 export const nameVariables: string[] = ['artists', 'name', 'year', 'duration'];
@@ -56,7 +57,8 @@ export const defaultSettings: SettingsProps = {
     albumArtSize: 3600,
     albumArtQuality: 1,
     zipName: '{artists} - {name}',
-    trackName: '{artists} - {name}'
+    trackName: '{artists} - {name}',
+    saveToLibrary: false
 };
 
 export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -66,7 +68,9 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         const savedSettings = localStorage.getItem('settings');
         if (savedSettings) {
             try {
-                const parsed = JSON.parse(savedSettings);
+                // Backfill any keys added in newer versions (e.g. saveToLibrary) so
+                // older persisted settings are upgraded rather than discarded.
+                const parsed = { ...defaultSettings, ...JSON.parse(savedSettings) };
                 if (isValidSettings(parsed)) {
                     setSettings(parsed);
                 }

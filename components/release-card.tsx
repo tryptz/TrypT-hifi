@@ -26,7 +26,7 @@ import { Separator } from './ui/separator';
 import { Skeleton } from './ui/skeleton';
 import { useFFmpeg } from '@/lib/ffmpeg-provider';
 import { useSettings } from '@/lib/settings-provider';
-import { useStatusBar } from '@/lib/status-bar/context';
+import { useDownloads } from '@/lib/downloads/downloads-provider';
 import { useToast } from '@/hooks/use-toast';
 import { useCountry } from '@/lib/country-provider';
 
@@ -43,7 +43,7 @@ const ReleaseCard = ({
 }) => {
     if (typeof showArtistDialog === 'undefined') showArtistDialog = true;
     const { ffmpegState } = useFFmpeg();
-    const { setStatusBar } = useStatusBar();
+    const downloads = useDownloads();
     const { settings } = useSettings();
 
     const [openTracklist, setOpenTracklist] = useState(false);
@@ -114,6 +114,7 @@ const ReleaseCard = ({
                                         size='icon'
                                         variant='ghost'
                                         className='aspect-square'
+                                        aria-label={`View artist for ${formatTitle(result)}`}
                                         onClick={async () => {
                                             setOpenArtistDialog(true);
                                         }}
@@ -129,10 +130,11 @@ const ReleaseCard = ({
                                     <Button
                                         size='icon'
                                         variant='ghost'
+                                        aria-label={`Download ${formatTitle(result)}`}
                                         onClick={async () => {
                                             await createDownloadJob(
                                                 result as QobuzTrack,
-                                                setStatusBar,
+                                                downloads,
                                                 ffmpegState!,
                                                 settings,
                                                 toast as any,
@@ -150,7 +152,7 @@ const ReleaseCard = ({
                                         size='icon'
                                         result={result as QobuzAlbum}
                                         toast={toast}
-                                        setStatusBar={setStatusBar}
+                                        downloads={downloads}
                                         ffmpegState={ffmpegState!}
                                         settings={settings}
                                         fetchedAlbumData={fetchedAlbumData}
@@ -163,6 +165,7 @@ const ReleaseCard = ({
                                     <Button
                                         size='icon'
                                         variant='ghost'
+                                        aria-label={`View tracklist for ${formatTitle(result)}`}
                                         onClick={async () => {
                                             setOpenTracklist(!openTracklist);
                                             await getFullAlbumInfo(fetchedAlbumData, setFetchedAlbumData, result as QobuzAlbum, country);
@@ -290,7 +293,7 @@ const ReleaseCard = ({
                                 <DownloadAlbumButton
                                     result={result as QobuzAlbum}
                                     toast={toast}
-                                    setStatusBar={setStatusBar}
+                                    downloads={downloads}
                                     ffmpegState={ffmpegState!}
                                     settings={settings}
                                     fetchedAlbumData={fetchedAlbumData}
@@ -334,13 +337,14 @@ const ReleaseCard = ({
                                                     {track.streamable && (
                                                         <Button
                                                             title={`Download '${formatTitle(track)}'`}
+                                                            aria-label={`Download ${formatTitle(track)}`}
                                                             className='md:group-hover:flex md:hidden justify-center aspect-square h-6 w-6 [&_svg]:size-5 hover:bg-transparent'
                                                             size='icon'
                                                             variant='ghost'
                                                             onClick={async () => {
                                                                 await createDownloadJob(
                                                                     track,
-                                                                    setStatusBar,
+                                                                    downloads,
                                                                     ffmpegState!,
                                                                     settings,
                                                                     toast as any,
