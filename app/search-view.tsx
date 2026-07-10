@@ -5,9 +5,9 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ReleaseCard from '@/components/release-card';
 import SearchBar from '@/components/search-bar/search-bar';
 import { Button } from '@/components/ui/button';
-import { Disc3Icon, DiscAlbumIcon, UsersIcon } from 'lucide-react';
+import { AudioLinesIcon, Disc3Icon, DiscAlbumIcon, UsersIcon } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { FilterDataType, filterExplicit, QobuzAlbum, QobuzArtist, QobuzSearchFilters, QobuzSearchResults, QobuzTrack } from '@/lib/qobuz-dl';
+import { buildSearchQuery, FilterDataType, filterExplicit, QobuzAlbum, QobuzArtist, QobuzSearchFilters, QobuzSearchResults, QobuzTrack } from '@/lib/qobuz-dl';
 import { getTailwindBreakpoint } from '@/lib/utils';
 import { motion, useAnimation } from 'motion/react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -40,6 +40,7 @@ const SearchView = () => {
     const [results, setResults] = useState<QobuzSearchResults | null>(null);
     const [searchField, setSearchField] = useState<QobuzSearchFilters>('albums');
     const [query, setQuery] = useState<string>('');
+    const [multichannel, setMultichannel] = useState<boolean>(false);
     const [loading, setLoading] = useState<boolean>(false);
     const [searching, setSearching] = useState<boolean>(false);
     const [searchError, setSearchError] = useState<string>('');
@@ -66,7 +67,10 @@ const SearchView = () => {
         const filter = filterData.find((fd) => fd.value == searchField) || filterData[0];
         if (filter.searchRoute) {
             axios
-                .get('/api/' + filter.searchRoute + `?q=${query}&offset=${results![searchField].items.length}`, { headers: { 'Token-Country': country } })
+                .get('/api/' + filter.searchRoute, {
+                    params: { q: buildSearchQuery(query, multichannel), offset: results![searchField].items.length },
+                    headers: { 'Token-Country': country }
+                })
                 .then((response) => {
                     if (response.status === 200) {
                         response.data.data[searchField].items.length = Math.max(
@@ -82,11 +86,16 @@ const SearchView = () => {
                             }
                         };
                         setLoading(false);
-                        if (query === response.data.data.query) setResults(newResults);
+                        if (buildSearchQuery(query, multichannel) === response.data.data.query) setResults(newResults);
                     }
                 });
         } else {
-            axios.get(`/api/get-music?q=${query}&offset=${results![searchField].items.length}`, { headers: { 'Token-Country': country } }).then((response) => {
+            axios
+                .get('/api/get-music', {
+                    params: { q: buildSearchQuery(query, multichannel), offset: results![searchField].items.length },
+                    headers: { 'Token-Country': country }
+                })
+                .then((response) => {
                 if (response.status === 200) {
                     let newResults = {
                         ...results!,
@@ -110,7 +119,7 @@ const SearchView = () => {
                         };
                     });
                     setLoading(false);
-                    if (query === response.data.data.query) setResults(newResults);
+                    if (buildSearchQuery(query, multichannel) === response.data.data.query) setResults(newResults);
                 }
             });
         }
@@ -208,12 +217,13 @@ const SearchView = () => {
             );
     }, [logoAnimationControls, mounted, logoSrc]);
 
-    const onSearch = async (query: string, searchFieldInput: string = searchField) => {
+    const onSearch = async (query: string, searchFieldInput: string = searchField, multichannelInput: boolean = multichannel) => {
         setQuery(query);
         setSearchError('');
         const filter = filterData.find((filter) => filter.value === searchFieldInput) || filterData[0];
         try {
-            const response = await axios.get(`/api/${filter.searchRoute ? filter.searchRoute : 'get-music'}?q=${query}&offset=0`, {
+            const response = await axios.get(`/api/${filter.searchRoute ? filter.searchRoute : 'get-music'}`, {
+                params: { q: buildSearchQuery(query, multichannelInput), offset: 0 },
                 headers: {
                     'Token-Country': country
                 }
@@ -246,6 +256,18 @@ const SearchView = () => {
     useEffect(() => {
         if (country && query) onSearch(query);
     }, [country]);
+
+    const toggleMultichannel = () => {
+        const enabled = !multichannel;
+        setMultichannel(enabled);
+        // Re-run the active search with the new filter; enabling with no query browses the surround catalog itself.
+        if (query.trim().length > 0 || enabled) {
+            setSearching(true);
+            onSearch(query.trim(), searchField, enabled);
+        } else {
+            setResults(null);
+        }
+    };
 
     return (
         <>
@@ -280,29 +302,42 @@ const SearchView = () => {
                     )}
                 </motion.div>
                 <div className='flex flex-col items-start justify-center'>
-                    <SearchBar onSearch={onSearch} searching={searching} setSearching={setSearching} query={query} />
+                    <SearchBar onSearch={onSearch} searching={searching} setSearching={setSearching} query={query} multichannel={multichannel} />
 
                     <div className='w-full flex items-center justify-between'>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button
-                                    variant='outline'
-                                    className='my-2 flex gap-2 focus-visible:outline-none focus-visible:ring-transparent select-none shadow-none outline-none !z-[99]'
-                                >
-                                    <FilterIcon />
-                                    <span className='capitalize'>{searchField}</span>
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                                <DropdownMenuRadioGroup value={searchField} onValueChange={setSearchField as React.Dispatch<React.SetStateAction<string>>}>
-                                    {filterData.map((type, index) => (
-                                        <DropdownMenuRadioItem key={index} value={type.value}>
-                                            {type.label}
-                                        </DropdownMenuRadioItem>
-                                    ))}
-                                </DropdownMenuRadioGroup>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div className='flex items-center gap-2'>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant='outline'
+                                        className='my-2 flex gap-2 focus-visible:outline-none focus-visible:ring-transparent select-none shadow-none outline-none !z-[99]'
+                                    >
+                                        <FilterIcon />
+                                        <span className='capitalize'>{searchField}</span>
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                    <DropdownMenuRadioGroup value={searchField} onValueChange={setSearchField as React.Dispatch<React.SetStateAction<string>>}>
+                                        {filterData.map((type, index) => (
+                                            <DropdownMenuRadioItem key={index} value={type.value}>
+                                                {type.label}
+                                            </DropdownMenuRadioItem>
+                                        ))}
+                                    </DropdownMenuRadioGroup>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                            <Button
+                                variant={multichannel ? 'default' : 'outline'}
+                                aria-pressed={multichannel}
+                                title='Only show multichannel (5.1 surround) releases'
+                                onClick={toggleMultichannel}
+                                className='my-2 flex gap-2 focus-visible:outline-none focus-visible:ring-transparent select-none shadow-none outline-none !z-[99]'
+                            >
+                                <AudioLinesIcon />
+                                <span className='hidden sm:inline'>Multichannel</span>
+                                <span className='sm:hidden'>5.1</span>
+                            </Button>
+                        </div>
                         <CountryPicker className='sm:hidden' />
                     </div>
                     {searchError && (

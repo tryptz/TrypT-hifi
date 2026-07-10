@@ -209,6 +209,11 @@ export function filterExplicit(results: QobuzSearchResults, explicit: boolean = 
     };
 }
 
+// Qobuz surfaces its surround catalog through the '#multichannel' hashtag search.
+export function buildSearchQuery(query: string, multichannel: boolean) {
+    return multichannel ? `${query} #multichannel`.trim() : query;
+}
+
 export function formatDuration(seconds: number) {
     if (!seconds) return '0m';
     const totalMinutes = Math.floor(seconds / 60);
