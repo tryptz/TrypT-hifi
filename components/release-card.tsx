@@ -15,6 +15,7 @@ import {
     getAlbum,
     getFullAlbumInfo,
     getType,
+    isThxSpatialAudio,
     QobuzAlbum,
     QobuzArtist,
     QobuzTrack
@@ -237,6 +238,14 @@ const ReleaseCard = ({
                             E
                         </p>
                     )}
+                    {isThxSpatialAudio(result) && (
+                        <p
+                            className='text-[10px] bg-primary text-primary-foreground p-1 rounded-[3px] h-[18px] text-center justify-center items-center shrink-0 flex font-semibold'
+                            title='THX Spatial Audio'
+                        >
+                            THX
+                        </p>
+                    )}
                     <h1 className='text-sm truncate font-bold group-hover:underline'>{formatTitle(result)}</h1>
                 </div>
                 {!(getType(result) === 'artists') && (
@@ -327,6 +336,14 @@ const ReleaseCard = ({
                                                                 title='Explicit'
                                                             >
                                                                 E
+                                                            </p>
+                                                        )}
+                                                        {isThxSpatialAudio(track) && (
+                                                            <p
+                                                                className='text-[10px] bg-primary text-primary-foreground p-1 rounded-[3px] h-[18px] shrink-0 text-center justify-center items-center flex font-semibold'
+                                                                title='THX Spatial Audio'
+                                                            >
+                                                                THX
                                                             </p>
                                                         )}
                                                         <p className='truncate font-medium'>{formatTitle(track)}</p>

@@ -214,6 +214,17 @@ export function buildSearchQuery(query: string, multichannel: boolean) {
     return multichannel ? `${query} #multichannel`.trim() : query;
 }
 
+// Qobuz marks THX Spatial Audio releases in the version/title metadata,
+// e.g. "Double Dare (THX Spatial Audio Version)".
+const THX_SPATIAL_AUDIO_REGEX = /thx\s*spatial\s*audio/i;
+
+export function isThxSpatialAudio(input: QobuzAlbum | QobuzTrack | QobuzArtist): boolean {
+    if (getType(input) === 'artists') return false;
+    const release = input as QobuzAlbum | QobuzTrack;
+    const album = getAlbum(release);
+    return [release.version, release.title, album?.version, album?.title].some((value) => !!value && THX_SPATIAL_AUDIO_REGEX.test(value));
+}
+
 export function formatDuration(seconds: number) {
     if (!seconds) return '0m';
     const totalMinutes = Math.floor(seconds / 60);
