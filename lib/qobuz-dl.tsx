@@ -38,6 +38,7 @@ export type QobuzTrack = {
     copyright: string;
     maximum_bit_depth: number;
     maximum_sampling_rate: number;
+    maximum_channel_count?: number;
     performer: {
         name: string;
         id: number;
@@ -70,6 +71,7 @@ export type FetchedQobuzAlbum = QobuzAlbum & {
 
 export type QobuzAlbum = {
     maximum_bit_depth: number;
+    maximum_channel_count?: number;
     image: {
         small: string;
         thumbnail: string;
