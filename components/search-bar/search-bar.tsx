@@ -6,7 +6,7 @@ import { Button } from '../ui/button';
 import { ArrowRightIcon, Loader2Icon, SearchIcon } from 'lucide-react';
 import { Label } from '../ui/label';
 import axios from 'axios';
-import { QobuzSearchResults } from '@/lib/qobuz-dl';
+import { buildSearchQuery, QobuzSearchResults } from '@/lib/qobuz-dl';
 import AutocompleteCard from './autocomplete-card';
 import { useCountry } from '@/lib/country-provider';
 import CountryPicker from '../country-picker';
@@ -15,12 +15,14 @@ const SearchBar = ({
     onSearch,
     searching,
     setSearching,
-    query
+    query,
+    multichannel = false
 }: {
     onSearch: (query: string, searchFieldInput?: 'albums' | 'tracks') => void;
     searching: boolean;
     setSearching: React.Dispatch<React.SetStateAction<boolean>>;
     query: string;
+    multichannel?: boolean;
 }) => {
     const [searchInput, setSearchInput] = useState(query);
     const [results, setResults] = useState<QobuzSearchResults | null>(null);
@@ -69,7 +71,8 @@ const SearchBar = ({
         try {
             setTimeout(async () => {
                 try {
-                    const response = await axios.get(`/api/get-music?q=${searchInput}&offset=0`, {
+                    const response = await axios.get('/api/get-music', {
+                        params: { q: buildSearchQuery(searchInput, multichannel), offset: 0 },
                         headers: {
                             'Token-Country': country
                         },
@@ -85,7 +88,7 @@ const SearchBar = ({
 
     useEffect(() => {
         fetchResults();
-    }, [searchInput]);
+    }, [searchInput, multichannel]);
 
     return (
         <div className='flex items-center gap-2 relative'>
