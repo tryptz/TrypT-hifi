@@ -1,4 +1,5 @@
 import ChangelogDialog from '@/components/ui/changelog-dialog';
+import DiscordBotButton from '@/components/discord-bot-button';
 import ParticlesComponent from '@/components/particles';
 import SettingsForm from '@/components/ui/settings-form';
 import StatusBarContainer from '@/components/status-bar/container';
@@ -85,6 +86,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
+                                            <DiscordBotButton />
                                             <a href='https://github.com/QobuzDL/Qobuz-DL' target='_blank' rel='noopener noreferrer'>
                                                 <Button variant='outline' size='icon'>
                                                     <FaGithub />
