@@ -1,0 +1,14 @@
+# Railway builds and deploys ONLY the Tryptify (Qobuz) Next.js app.
+#
+# The Apple Music service (ALACarte) is a self-contained git submodule that is
+# meant to run via docker-compose on a VPS — its 115 MB amd64 FairPlay wrapper
+# and separate Vite/Node apps must never be part of the Railway build context.
+# Excluding it keeps Nixpacks focused on the root Next.js app and avoids
+# monorepo mis-detection, oversized build context, and build-disk pressure.
+apple-music/
+
+# Runtime state / downloads for the self-hosted compose stack — never on Railway.
+data/
+
+# Discord bot is a separate process (npm run bot), not part of the web build.
+bot/
