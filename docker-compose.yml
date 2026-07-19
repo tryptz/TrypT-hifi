@@ -17,7 +17,7 @@ services:
         container_name: tryptify
         build:
             context: .
-            dockerfile: Dockerfile
+            dockerfile: Dockerfile.dev
         image: tryptify
         environment:
             - NEXT_PUBLIC_APPLICATION_NAME=${NEXT_PUBLIC_APPLICATION_NAME:-Tryptify}
