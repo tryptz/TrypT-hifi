@@ -5,6 +5,9 @@ export type SettingsProps = {
     particles: boolean;
     outputQuality: '27' | '7' | '6' | '5';
     outputCodec: 'FLAC' | 'WAV' | 'ALAC' | 'MP3' | 'AAC' | 'OPUS';
+    // Apple Music source quality tier. Not an FFmpeg re-encode target — Atmos
+    // (EC-3 JOC) is a passthrough handled on-device by Tryptify, never here.
+    appleQuality: 'alac' | 'hires-lossless' | 'atmos' | 'aac';
     bitrate: number | undefined;
     applyMetadata: boolean;
     fixMD5: boolean;
@@ -49,6 +52,7 @@ export const defaultSettings: SettingsProps = {
     particles: true,
     outputQuality: '27',
     outputCodec: 'FLAC',
+    appleQuality: 'alac',
     bitrate: 320,
     applyMetadata: true,
     fixMD5: false,
@@ -68,7 +72,9 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
             try {
                 const parsed = JSON.parse(savedSettings);
                 if (isValidSettings(parsed)) {
-                    setSettings(parsed);
+                    // Merge over defaults so fields added in later versions
+                    // (e.g. appleQuality) are backfilled instead of undefined.
+                    setSettings({ ...defaultSettings, ...parsed } as SettingsProps);
                 }
             } catch (e) {
                 console.error("Failed to parse settings:", e);

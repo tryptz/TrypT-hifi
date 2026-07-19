@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenu
 import { Input } from './input';
 import { ModeToggle } from '../mode-toggle';
 import { nameVariables, SettingsProps, useSettings } from '@/lib/settings-provider';
+import { useSource } from '@/lib/source-provider';
 import { Separator } from './separator';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Slider } from './slider';
@@ -23,8 +24,16 @@ const qualityMap = {
 
 const SettingsForm = () => {
     const { settings, setSettings, resetSettings } = useSettings();
+    const { source } = useSource();
 
     const [open, setOpen] = useState(false);
+
+    const appleQualityLabels: Record<SettingsProps['appleQuality'], string> = {
+        alac: 'ALAC (Lossless)',
+        'hires-lossless': 'Hi-Res Lossless',
+        atmos: 'Dolby Atmos',
+        aac: 'AAC'
+    };
 
     const bitrateInput = useRef<HTMLInputElement | null>(null);
 
@@ -198,6 +207,35 @@ const SettingsForm = () => {
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </div>
+                        {source === 'apple' && (
+                            <div className='space-y-2'>
+                                <p className='font-medium text-sm'>Apple Music Quality</p>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant='outline' className='flex gap-2 items-center'>
+                                            <p>{appleQualityLabels[settings.appleQuality]}</p>
+                                            <ChevronDownIcon />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align='start'>
+                                        <DropdownMenuRadioGroup
+                                            value={settings.appleQuality}
+                                            onValueChange={(value: string) => {
+                                                setSettings((prev) => ({ ...prev, appleQuality: value as SettingsProps['appleQuality'] }));
+                                            }}
+                                        >
+                                            <DropdownMenuRadioItem value='alac'>ALAC (Lossless)</DropdownMenuRadioItem>
+                                            <DropdownMenuRadioItem value='hires-lossless'>Hi-Res Lossless</DropdownMenuRadioItem>
+                                            <DropdownMenuRadioItem value='atmos'>Dolby Atmos</DropdownMenuRadioItem>
+                                            <DropdownMenuRadioItem value='aac'>AAC</DropdownMenuRadioItem>
+                                        </DropdownMenuRadioGroup>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                                <p className='text-xs text-muted-foreground'>
+                                    Apple downloads are decrypted and rendered on-device by Tryptify. Atmos is passed through untouched for the Option-B renderer.
+                                </p>
+                            </div>
+                        )}
                         {losslessCodecs.includes(settings.outputCodec) ? (
                             <div className='space-y-2'>
                                 <p className='font-medium text-sm'>Max Download Quality</p>
