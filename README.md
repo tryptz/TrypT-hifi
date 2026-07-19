@@ -105,16 +105,16 @@ If neither is set, the button is hidden.
 
 Railway hosts the **Tryptify** service (Qobuz browser app). The Apple Music service is **not** deployed here — its FairPlay wrapper needs Docker-in-Docker and amd64 device mounts Railway can't provide (see [Apple Music service](#apple-music-service-alacarte)).
 
-A [`railway.json`](./railway.json) is included, so Railway builds with Nixpacks and runs the production server:
+A [`railway.json`](./railway.json) is included, so Railway builds with the production [`Dockerfile`](./Dockerfile) and runs the server:
 
-- **Build:** `npm run build`
+- **Build:** multi-stage `Dockerfile` → `npm ci` → `npm run build` (Node 22).
 - **Start:** `npm run start` → `next start -H 0.0.0.0`, which binds to Railway's injected `$PORT`.
-- **Node:** pinned to 22 via [`.nvmrc`](./.nvmrc).
+- **Context:** the 115 MB `apple-music` submodule and the Discord `bot/` are excluded via [`.dockerignore`](./.dockerignore).
 
 ### Steps
 
 1. Create a new Railway project → **Deploy from GitHub repo** and pick this repo.
-2. Railway auto-detects `railway.json` (Nixpacks). No Dockerfile settings needed — the root `Dockerfile` is only for the local Compose stack and is ignored here.
+2. Railway auto-detects `railway.json` and builds the root `Dockerfile`. The same Dockerfile is used by the local Compose stack.
 3. Add the variables below in the Railway dashboard (**Variables** tab), then deploy.
 
 ### Railway variables
