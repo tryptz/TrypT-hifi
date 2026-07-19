@@ -1,7 +1,110 @@
+# Unified Tryptify stack.
+#
+# Runs the two apps in parallel behind one `docker compose up`:
+#   - Tryptify      : the Qobuz browser downloader           -> http://<host>:3000
+#   - ALACarte      : the self-hosted Apple Music downloader -> http://<host>:7373
+#
+# The Apple Music service lives in the ./apple-music git submodule (the
+# tryptz/apple-music- fork). Clone this repo with --recurse-submodules, or run
+# `git submodule update --init --recursive` before building, so its source is
+# present. Then:
+#
+#   cp .env.example .env      # set MUSIC_PATH (required by the Apple Music service)
+#   docker compose up -d --build
+#
 services:
-    qobuz-dl:
-        container_name: qobuz-dl
-        image: qobuz-dl
+    tryptify:
+        container_name: tryptify
+        build:
+            context: .
+            dockerfile: Dockerfile
+        image: tryptify
+        environment:
+            - NEXT_PUBLIC_APPLICATION_NAME=${NEXT_PUBLIC_APPLICATION_NAME:-Tryptify}
+            # Optional: point the header "Apple Music" button at a specific URL
+            # (e.g. a reverse-proxied https host). When empty the button targets
+            # the current host on NEXT_PUBLIC_APPLE_MUSIC_PORT.
+            - NEXT_PUBLIC_APPLE_MUSIC_URL=${NEXT_PUBLIC_APPLE_MUSIC_URL:-}
+            - NEXT_PUBLIC_APPLE_MUSIC_PORT=${WEB_PORT:-7373}
         ports:
-            - 3000:3000
+            - '${TRYPTIFY_PORT:-3000}:3000'
         restart: unless-stopped
+        networks:
+            - trypt-net
+
+    # ---- Apple Music service (ALACarte, ./apple-music submodule) ----
+
+    alacarte-wrapper:
+        build:
+            context: ./apple-music/wrapper
+            dockerfile: Dockerfile
+        image: alacarte-wrapper:local
+        container_name: alacarte-wrapper
+        # Wrapper binary + upstream rootfs are amd64-only. Pinning the platform
+        # makes the build/run path explicit on arm64 hosts (Apple Silicon
+        # emulates via Rosetta).
+        platform: linux/amd64
+        volumes:
+            - ./data/wrapper:/app/rootfs/data
+            # The chroot dev/ ships empty; the Android runtime needs working
+            # device nodes. Explicit bind-mounts work on both Docker and Podman.
+            - /dev/null:/app/rootfs/dev/null
+            - /dev/urandom:/app/rootfs/dev/urandom
+            - /dev/random:/app/rootfs/dev/random
+            - /dev/zero:/app/rootfs/dev/zero
+        # Hand argv straight to the binary — avoids all shell-quoting pitfalls.
+        entrypoint: ['/app/wrapper']
+        command: ['-H', '0.0.0.0']
+        expose:
+            - '10020'
+            - '20020'
+            - '30020'
+        networks:
+            - trypt-net
+        # on-failure (not unless-stopped) so a clean exit due to missing creds
+        # doesn't loop forever — the web container surfaces an "enter Apple
+        # creds" banner.
+        restart: on-failure
+
+    alacarte-web:
+        build:
+            context: ./apple-music
+            dockerfile: backend/Dockerfile
+        container_name: alacarte-web
+        # Upstream apple-music-downloader image is published amd64-only.
+        platform: linux/amd64
+        depends_on:
+            - alacarte-wrapper
+        environment:
+            - PORT=7373
+            - AMDL_WRAPPER_HOST=alacarte-wrapper
+            - AMDL_WRAPPER_DECRYPT_PORT=10020
+            - AMDL_WRAPPER_M3U8_PORT=20020
+            - AMDL_WRAPPER_ACCOUNT_PORT=30020
+            - AMDL_MUSIC_PATH=/music
+            - AMDL_CONFIG_DIR=/config
+            - AMDL_SECRET_KEY=${AMDL_SECRET_KEY:-}
+            - AUTH_DISABLED=${AUTH_DISABLED:-false}
+            - TRUST_PROXY=${TRUST_PROXY:-loopback}
+        volumes:
+            - ./data/web:/config
+            - ${MUSIC_PATH:?Set MUSIC_PATH in .env}:/music
+            # Shared with the wrapper container so the web UI can drop a 2fa.txt
+            # file when the Apple ID requires a 2FA code (wrapper polls it).
+            - ./data/wrapper:/wrapper-data
+            # Required so the web UI can run first-time Apple ID login for the
+            # wrapper container automatically. Treat this as root-on-host
+            # access; only expose the web UI on trusted networks.
+            - ${CONTAINER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+        # Default (WEB_BIND unset/empty) publishes on all interfaces. Set
+        # WEB_BIND=127.0.0.1 in .env to restrict the UI to the host machine.
+        ports:
+            - '${WEB_BIND:-0.0.0.0}:${WEB_PORT:-7373}:7373'
+        networks:
+            - trypt-net
+        restart: unless-stopped
+
+networks:
+    trypt-net:
+        name: ${DOCKER_NETWORK:-trypt-net}
+        external: ${DOCKER_NETWORK_EXTERNAL:-false}

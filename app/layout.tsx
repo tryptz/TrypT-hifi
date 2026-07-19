@@ -1,3 +1,4 @@
+import AppleMusicButton from '@/components/apple-music-button';
 import ChangelogDialog from '@/components/ui/changelog-dialog';
 import DiscordBotButton from '@/components/discord-bot-button';
 import ParticlesComponent from '@/components/particles';
@@ -87,6 +88,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                             <DiscordBotButton />
+                                            <AppleMusicButton />
                                             <a href='https://github.com/QobuzDL/Qobuz-DL' target='_blank' rel='noopener noreferrer'>
                                                 <Button variant='outline' size='icon'>
                                                     <FaGithub />
