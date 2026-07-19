@@ -101,6 +101,45 @@ An "Add Bot" button can be shown in the header to let users invite your Discord 
 
 If neither is set, the button is hidden.
 
+## Deploy on Railway
+
+Railway hosts the **Tryptify** service (Qobuz browser app). The Apple Music service is **not** deployed here — its FairPlay wrapper needs Docker-in-Docker and amd64 device mounts Railway can't provide (see [Apple Music service](#apple-music-service-alacarte)).
+
+A [`railway.json`](./railway.json) is included, so Railway builds with Nixpacks and runs the production server:
+
+- **Build:** `npm run build`
+- **Start:** `npm run start` → `next start -H 0.0.0.0`, which binds to Railway's injected `$PORT`.
+- **Node:** pinned to 22 via [`.nvmrc`](./.nvmrc).
+
+### Steps
+
+1. Create a new Railway project → **Deploy from GitHub repo** and pick this repo.
+2. Railway auto-detects `railway.json` (Nixpacks). No Dockerfile settings needed — the root `Dockerfile` is only for the local Compose stack and is ignored here.
+3. Add the variables below in the Railway dashboard (**Variables** tab), then deploy.
+
+### Railway variables
+
+Required (runtime — Qobuz will error without them):
+
+| Variable | Notes |
+| --- | --- |
+| `QOBUZ_APP_ID` | From the [App ID / Secret tool](https://github.com/QobuzDL/Qobuz-AppID-Secret-Tool). |
+| `QOBUZ_SECRET` | Same tool. |
+| `QOBUZ_API_BASE` | e.g. `https://www.qobuz.com/api.json/0.2/` |
+| `QOBUZ_AUTH_TOKENS` | JSON array, e.g. `["your-user-auth-token"]` (token from `localStorage` on play.qobuz.com for a paying account). |
+
+Optional:
+
+| Variable | Notes |
+| --- | --- |
+| `NEXT_PUBLIC_APPLICATION_NAME` | UI display name. Defaults to `Tryptify`. **Inlined at build time** — set it before the build. |
+| `NEXT_PUBLIC_APPLE_MUSIC_URL` | Public URL of your separately-hosted ALACarte instance for the header button. **Inlined at build time.** |
+
+> [!IMPORTANT]
+> `NEXT_PUBLIC_*` variables are baked into the client bundle **at build time**. Set them in Railway *before* deploying (and redeploy after changing one) — changing them at runtime has no effect. The `QOBUZ_*` variables are read at request time, so they take effect on restart without a rebuild.
+
+See [`.env.example`](./.env.example) for the full list.
+
 ## Apple Music service (ALACarte)
 
 Tryptify ships with a companion **Apple Music** downloader — [ALACarte](https://github.com/tryptz/apple-music-) — vendored as a git submodule at `./apple-music`. The two run **in parallel**:
