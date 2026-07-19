@@ -146,6 +146,18 @@ decode + Object Audio Renderer are proprietary Dolby IP. Your realistic options:
 build toward **B** (the real Atmos renderer, your differentiator). Treat **A** as
 a device-capability fallback you can offer as a toggle.
 
+> **DECISION (locked): Option B.** Tryptify implements the clean-room
+> OAMD/JOC object decode + object→HRTF render in `monochrome_dsp`. This is the
+> only path where Atmos flows through the mixer/AutoEQ/USB-DAC.
+>
+> **Hard constraint this places on trypt-hifi (the catalog layer):** the
+> download/handoff must deliver the **untouched EC-3 JOC elementary stream**
+> (`audio-atmos` / `audio-ec3`). trypt-hifi must **never** transcode or remux the
+> Atmos stream server-side — FFmpeg (and any DD+ remux) **strips the JOC
+> side-data** the Option B renderer depends on (see §4). trypt-hifi packages the
+> raw stream reference + metadata into the handoff manifest; **all** decode/render
+> happens on-device in Tryptify.
+
 ---
 
 ## 4. Why FFmpeg alone is not "the renderer"
