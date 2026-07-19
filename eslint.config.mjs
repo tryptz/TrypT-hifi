@@ -10,6 +10,11 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
+    {
+        // The Apple Music service (./apple-music) is a self-contained submodule
+        // with its own toolchain — keep it out of Tryptify's lint/type-check.
+        ignores: ['apple-music/**']
+    },
     ...compat.extends('next/core-web-vitals', 'next/typescript'),
     {
         rules: {
