@@ -6,8 +6,11 @@ import { FFmpegType } from '@/lib/ffmpeg-functions';
 import { SettingsProps } from '@/lib/settings-provider';
 import { FetchedQobuzAlbum, formatTitle, getFullAlbumInfo, QobuzAlbum } from '@/lib/qobuz-dl';
 import { createDownloadJob } from '@/lib/download-job';
+import { createAppleDownloadJob } from '@/lib/apple-download-job';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { useCountry } from '@/lib/country-provider';
+import { MusicSource } from '@/lib/source-provider';
+import { HandoffPayload } from '@/lib/apple-handoff-provider';
 
 export interface DownloadAlbumButtonProps extends ButtonProps {
     result: QobuzAlbum;
@@ -19,6 +22,8 @@ export interface DownloadAlbumButtonProps extends ButtonProps {
     onOpen?: () => void;
     onClose?: () => void;
     toast: (toast: any) => void;
+    source?: MusicSource;
+    showHandoff?: (payload: HandoffPayload) => void;
 }
 
 const DownloadButton = React.forwardRef<HTMLButtonElement, DownloadAlbumButtonProps>(
@@ -37,6 +42,8 @@ const DownloadButton = React.forwardRef<HTMLButtonElement, DownloadAlbumButtonPr
             toast,
             fetchedAlbumData,
             setFetchedAlbumData,
+            source,
+            showHandoff,
             ...props
         },
         ref
@@ -47,6 +54,27 @@ const DownloadButton = React.forwardRef<HTMLButtonElement, DownloadAlbumButtonPr
             if (open) onOpen?.();
             else onClose?.();
         });
+        if (source === 'apple' && showHandoff) {
+            // Apple: no zip/no-zip distinction — resolve the album's manifests and
+            // hand the batch to Tryptify.
+            return (
+                <Button
+                    className={className}
+                    ref={ref}
+                    variant={variant}
+                    size={size}
+                    asChild={asChild}
+                    {...props}
+                    onClick={(e) => {
+                        (props as any).onClick?.(e);
+                        createAppleDownloadJob(result, setStatusBar, settings, toast, showHandoff, country, fetchedAlbumData, setFetchedAlbumData);
+                        toast({ title: `Added '${formatTitle(result)}'`, description: 'Resolving manifests for the Tryptify handoff' });
+                    }}
+                >
+                    <DownloadIcon className='!size-4' />
+                </Button>
+            );
+        }
         return (
             <>
                 <DropdownMenu open={open} onOpenChange={setOpen}>

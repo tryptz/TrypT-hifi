@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
 import { Disc3Icon, DiscAlbumIcon, DownloadIcon, LucideIcon, RadioTowerIcon, UsersIcon } from 'lucide-react';
 import { downloadArtistDiscography } from '@/lib/download-job';
+import { downloadAppleArtistDiscography } from '@/lib/apple-download-job';
 import { motion } from 'motion/react';
 import { parseArtistAlbumData, parseArtistData, QobuzArtist, QobuzArtistResults } from '@/lib/qobuz-dl';
 import { ScrollArea, ScrollBar } from './ui/scroll-area';
@@ -17,6 +18,8 @@ import { useStatusBar } from '@/lib/status-bar/context';
 import { useTheme } from 'next-themes';
 import { useToast } from '@/hooks/use-toast';
 import { useCountry } from '@/lib/country-provider';
+import { sourceApiBase, useSource } from '@/lib/source-provider';
+import { useAppleHandoff } from '@/lib/apple-handoff-provider';
 
 export type CategoryType = {
     label: string;
@@ -51,12 +54,15 @@ const ArtistDialog = ({ open, setOpen, artist }: { open: boolean; setOpen: (open
     const [artistResults, setArtistResults] = useState<QobuzArtistResults | null>(null);
     const [, setSearching] = useState(false);
     const { country } = useCountry();
+    const { source } = useSource();
+    const { showHandoff } = useAppleHandoff();
 
     const getArtistData = async () => {
         if (artistResults) return;
         try {
-            const response = await axios.get(`/api/get-artist`, { params: { artist_id: artist.id }, headers: { 'Token-Country': country } });
-            setArtistResults(parseArtistData(response.data.data));
+            const response = await axios.get(`${sourceApiBase(source)}/get-artist`, { params: { artist_id: artist.id }, headers: { 'Token-Country': country } });
+            // Apple responses arrive already parsed (server-side); Qobuz needs parseArtistData.
+            setArtistResults(source === 'apple' ? response.data.data : parseArtistData(response.data.data));
         } catch {
             toast({ title: 'Error', description: 'Could not fetch artist data, check your token' });
         }
@@ -64,7 +70,7 @@ const ArtistDialog = ({ open, setOpen, artist }: { open: boolean; setOpen: (open
 
     const fetchMore = async (searchField: 'album' | 'epSingle' | 'live' | 'compilation', artistResults: QobuzArtistResults) => {
         setSearching(true);
-        const response = await axios.get(`/api/get-releases`, {
+        const response = await axios.get(`${sourceApiBase(source)}/get-releases`, {
             params: {
                 artist_id: artist.id,
                 offset: artistResults!.artist.releases[searchField]!.items.length,
@@ -75,7 +81,7 @@ const ArtistDialog = ({ open, setOpen, artist }: { open: boolean; setOpen: (open
         });
         const newReleases = [
             ...artistResults!.artist.releases[searchField].items,
-            ...response.data.data.items.map((release: any) => parseArtistAlbumData(release))
+            ...(source === 'apple' ? response.data.data.items : response.data.data.items.map((release: any) => parseArtistAlbumData(release)))
         ];
         setArtistResults({
             ...artistResults!,
@@ -148,17 +154,10 @@ const ArtistDialog = ({ open, setOpen, artist }: { open: boolean; setOpen: (open
                                     size='icon'
                                     variant='ghost'
                                     onClick={() => {
-                                        downloadArtistDiscography(
-                                            artistResults,
-                                            setArtistResults,
-                                            fetchMore,
-                                            'all',
-                                            setStatusBar,
-                                            settings,
-                                            toast,
-                                            ffmpegState!,
-                                            country
-                                        );
+                                        if (source === 'apple')
+                                            downloadAppleArtistDiscography(artistResults, setArtistResults, fetchMore, 'all', setStatusBar, settings, toast, showHandoff, country);
+                                        else
+                                            downloadArtistDiscography(artistResults, setArtistResults, fetchMore, 'all', setStatusBar, settings, toast, ffmpegState!, country);
                                     }}
                                 >
                                     <DownloadIcon />
@@ -205,10 +204,12 @@ const ArtistReleaseSection = ({
     const [searching, setSearching] = useState(false);
     const [scrollTrigger, isInView] = useInView();
     const { country } = useCountry();
+    const { source } = useSource();
+    const { showHandoff } = useAppleHandoff();
 
     const fetchMore = async (searchField: 'album' | 'epSingle' | 'live' | 'compilation', artistResults: QobuzArtistResults) => {
         setSearching(true);
-        const response = await axios.get(`/api/get-releases`, {
+        const response = await axios.get(`${sourceApiBase(source)}/get-releases`, {
             params: {
                 artist_id: artist.id,
                 offset: artistResults!.artist.releases[searchField]!.items.length,
@@ -219,7 +220,7 @@ const ArtistReleaseSection = ({
         });
         const newReleases = [
             ...artistResults!.artist.releases[searchField].items,
-            ...response.data.data.items.map((release: any) => parseArtistAlbumData(release))
+            ...(source === 'apple' ? response.data.data.items : response.data.data.items.map((release: any) => parseArtistAlbumData(release)))
         ];
         setArtistResults({
             ...artistResults!,
@@ -257,16 +258,10 @@ const ArtistReleaseSection = ({
                             variant='outline'
                             className='ml-2'
                             onClick={() => {
-                                downloadArtistDiscography(
-                                    artistResults,
-                                    setArtistResults,
-                                    fetchMore,
-                                    category.value,
-                                    setStatusBar,
-                                    settings,
-                                    toast,
-                                    ffmpegState!
-                                );
+                                if (source === 'apple')
+                                    downloadAppleArtistDiscography(artistResults!, setArtistResults, fetchMore, category.value, setStatusBar, settings, toast, showHandoff, country);
+                                else
+                                    downloadArtistDiscography(artistResults!, setArtistResults, fetchMore, category.value, setStatusBar, settings, toast, ffmpegState!);
                             }}
                         >
                             Download All

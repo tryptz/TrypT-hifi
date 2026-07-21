@@ -15,6 +15,8 @@ import { StatusBarProvider } from '@/lib/status-bar/context';
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/toaster';
 import { CountryProvider } from '@/lib/country-provider';
+import { SourceProvider } from '@/lib/source-provider';
+import { AppleHandoffProvider } from '@/lib/apple-handoff-provider';
 import './globals.css';
 
 const inter = Inter({
@@ -56,10 +58,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <html lang='en' suppressHydrationWarning>
             <body className={`${inter.className} antialiased`} suppressHydrationWarning>
                 <FFmpegProvider>
+                    <SourceProvider>
                     <CountryProvider>
                         <StatusBarProvider>
                             <SettingsProvider>
                                 <ThemeProvider attribute='class' defaultTheme='dark' enableSystem>
+                                    <AppleHandoffProvider>
                                     <ParticlesComponent className='z-[-1] h-full w-full fixed' />
                                     <div className='fixed justify-between items-start flex w-full max-w-screen p-4 z-[10]'>
                                         <div className='flex flex-col gap-2'>
@@ -101,10 +105,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                                         <Toaster />
                                         <StatusBarContainer />
                     </div>
+                                    </AppleHandoffProvider>
                 </ThemeProvider>
             </SettingsProvider>
         </StatusBarProvider>
     </CountryProvider>
+    </SourceProvider>
 </FFmpegProvider>
 </body>
 </html>

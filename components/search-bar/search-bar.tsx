@@ -9,6 +9,7 @@ import axios from 'axios';
 import { buildSearchQuery, QobuzSearchResults } from '@/lib/qobuz-dl';
 import AutocompleteCard from './autocomplete-card';
 import { useCountry } from '@/lib/country-provider';
+import { sourceApiBase, useSource } from '@/lib/source-provider';
 import CountryPicker from '../country-picker';
 
 const SearchBar = ({
@@ -32,6 +33,7 @@ const SearchBar = ({
 
     const inputRef = useRef<HTMLInputElement>(null);
     const { country } = useCountry();
+    const { source } = useSource();
 
     useEffect(() => {
         setSearchInput(query);
@@ -71,8 +73,8 @@ const SearchBar = ({
         try {
             setTimeout(async () => {
                 try {
-                    const response = await axios.get('/api/get-music', {
-                        params: { q: buildSearchQuery(searchInput, multichannel), offset: 0 },
+                    const response = await axios.get(sourceApiBase(source) + '/get-music', {
+                        params: { q: buildSearchQuery(searchInput, source === 'apple' ? false : multichannel), offset: 0 },
                         headers: {
                             'Token-Country': country
                         },
@@ -88,7 +90,7 @@ const SearchBar = ({
 
     useEffect(() => {
         fetchResults();
-    }, [searchInput, multichannel]);
+    }, [searchInput, multichannel, source]);
 
     return (
         <div className='flex items-center gap-2 relative'>

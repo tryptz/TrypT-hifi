@@ -6,6 +6,10 @@ import { AlignJustifyIcon, DotIcon, DownloadIcon, UsersIcon, DiscAlbumIcon } fro
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
 import { createDownloadJob } from '@/lib/download-job';
+import { createAppleDownloadJob } from '@/lib/apple-download-job';
+import { getFullAppleAlbumInfo } from '@/lib/apple-music';
+import { useSource } from '@/lib/source-provider';
+import { useAppleHandoff } from '@/lib/apple-handoff-provider';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import {
     FetchedQobuzAlbum,
@@ -46,6 +50,8 @@ const ReleaseCard = ({
     const { ffmpegState } = useFFmpeg();
     const { setStatusBar } = useStatusBar();
     const { settings } = useSettings();
+    const { source } = useSource();
+    const { showHandoff } = useAppleHandoff();
 
     const [openTracklist, setOpenTracklist] = useState(false);
     const [fetchedAlbumData, setFetchedAlbumData] = useState<FetchedQobuzAlbum | null>(null);
@@ -131,16 +137,28 @@ const ReleaseCard = ({
                                         size='icon'
                                         variant='ghost'
                                         onClick={async () => {
-                                            await createDownloadJob(
-                                                result as QobuzTrack,
-                                                setStatusBar,
-                                                ffmpegState!,
-                                                settings,
-                                                toast as any,
-                                                fetchedAlbumData,
-                                                setFetchedAlbumData,
-                                                country
-                                            );
+                                            if (source === 'apple')
+                                                await createAppleDownloadJob(
+                                                    result as QobuzTrack,
+                                                    setStatusBar,
+                                                    settings,
+                                                    toast as any,
+                                                    showHandoff,
+                                                    country,
+                                                    fetchedAlbumData,
+                                                    setFetchedAlbumData
+                                                );
+                                            else
+                                                await createDownloadJob(
+                                                    result as QobuzTrack,
+                                                    setStatusBar,
+                                                    ffmpegState!,
+                                                    settings,
+                                                    toast as any,
+                                                    fetchedAlbumData,
+                                                    setFetchedAlbumData,
+                                                    country
+                                                );
                                         }}
                                     >
                                         <DownloadIcon />
@@ -158,6 +176,8 @@ const ReleaseCard = ({
                                         setFetchedAlbumData={setFetchedAlbumData}
                                         onOpen={() => setFocusCard(true)}
                                         onClose={() => setFocusCard(false)}
+                                        source={source}
+                                        showHandoff={showHandoff}
                                     />
                                 )}
                                 {(result as QobuzTrack).album ? null : (
@@ -166,7 +186,9 @@ const ReleaseCard = ({
                                         variant='ghost'
                                         onClick={async () => {
                                             setOpenTracklist(!openTracklist);
-                                            await getFullAlbumInfo(fetchedAlbumData, setFetchedAlbumData, result as QobuzAlbum, country);
+                                            if (source === 'apple')
+                                                await getFullAppleAlbumInfo(fetchedAlbumData, setFetchedAlbumData, result as QobuzAlbum, country);
+                                            else await getFullAlbumInfo(fetchedAlbumData, setFetchedAlbumData, result as QobuzAlbum, country);
                                         }}
                                     >
                                         <AlignJustifyIcon />
@@ -306,6 +328,8 @@ const ReleaseCard = ({
                                     setFetchedAlbumData={setFetchedAlbumData}
                                     variant='ghost'
                                     size='icon'
+                                    source={source}
+                                    showHandoff={showHandoff}
                                     onClick={() => {
                                         setOpenTracklist(false);
                                     }}
@@ -355,16 +379,19 @@ const ReleaseCard = ({
                                                             size='icon'
                                                             variant='ghost'
                                                             onClick={async () => {
-                                                                await createDownloadJob(
-                                                                    track,
-                                                                    setStatusBar,
-                                                                    ffmpegState!,
-                                                                    settings,
-                                                                    toast as any,
-                                                                    undefined,
-                                                                    undefined,
-                                                                    country
-                                                                );
+                                                                if (source === 'apple')
+                                                                    await createAppleDownloadJob(track, setStatusBar, settings, toast as any, showHandoff, country);
+                                                                else
+                                                                    await createDownloadJob(
+                                                                        track,
+                                                                        setStatusBar,
+                                                                        ffmpegState!,
+                                                                        settings,
+                                                                        toast as any,
+                                                                        undefined,
+                                                                        undefined,
+                                                                        country
+                                                                    );
                                                                 toast({
                                                                     title: `Added '${formatTitle(track)}' to the queue`,
                                                                     description: 'Track has been added to the queue'

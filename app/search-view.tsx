@@ -16,6 +16,7 @@ import { useSettings } from '@/lib/settings-provider';
 import { useTheme } from 'next-themes';
 import CountryPicker from '@/components/country-picker';
 import { useCountry } from '@/lib/country-provider';
+import { sourceApiBase, useSource } from '@/lib/source-provider';
 
 export const filterData: FilterDataType = [
     {
@@ -46,6 +47,7 @@ const SearchView = () => {
     const [searchError, setSearchError] = useState<string>('');
     const { settings } = useSettings();
     const { country } = useCountry();
+    const { source, setSource } = useSource();
 
     useEffect(() => {
         console.log(`%c${process.env.NEXT_PUBLIC_APPLICATION_NAME}`, 'font-size: 25px; font-weight: bold;');
@@ -67,7 +69,7 @@ const SearchView = () => {
         const filter = filterData.find((fd) => fd.value == searchField) || filterData[0];
         if (filter.searchRoute) {
             axios
-                .get('/api/' + filter.searchRoute, {
+                .get(sourceApiBase(source) + '/' + filter.searchRoute, {
                     params: { q: buildSearchQuery(query, multichannel), offset: results![searchField].items.length },
                     headers: { 'Token-Country': country }
                 })
@@ -91,7 +93,7 @@ const SearchView = () => {
                 });
         } else {
             axios
-                .get('/api/get-music', {
+                .get(sourceApiBase(source) + '/get-music', {
                     params: { q: buildSearchQuery(query, multichannel), offset: results![searchField].items.length },
                     headers: { 'Token-Country': country }
                 })
@@ -222,7 +224,7 @@ const SearchView = () => {
         setSearchError('');
         const filter = filterData.find((filter) => filter.value === searchFieldInput) || filterData[0];
         try {
-            const response = await axios.get(`/api/${filter.searchRoute ? filter.searchRoute : 'get-music'}`, {
+            const response = await axios.get(`${sourceApiBase(source)}/${filter.searchRoute ? filter.searchRoute : 'get-music'}`, {
                 params: { q: buildSearchQuery(query, multichannelInput), offset: 0 },
                 headers: {
                     'Token-Country': country
@@ -256,6 +258,15 @@ const SearchView = () => {
     useEffect(() => {
         if (country && query) onSearch(query);
     }, [country]);
+
+    useEffect(() => {
+        // Multichannel is a Qobuz-only hashtag search; disable it on Apple.
+        if (source === 'apple' && multichannel) setMultichannel(false);
+        if (query) {
+            setSearching(true);
+            onSearch(query, searchField, source === 'apple' ? false : multichannel);
+        }
+    }, [source]);
 
     const toggleMultichannel = () => {
         const enabled = !multichannel;
@@ -306,6 +317,15 @@ const SearchView = () => {
 
                     <div className='w-full flex items-center justify-between'>
                         <div className='flex items-center gap-2'>
+                            <Button
+                                variant='outline'
+                                aria-pressed={source === 'apple'}
+                                title='Switch music source'
+                                onClick={() => setSource(source === 'apple' ? 'qobuz' : 'apple')}
+                                className='my-2 flex gap-2 focus-visible:outline-none focus-visible:ring-transparent select-none shadow-none outline-none !z-[99]'
+                            >
+                                <span>{source === 'apple' ? 'Apple Music' : 'Qobuz'}</span>
+                            </Button>
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                     <Button
@@ -326,17 +346,19 @@ const SearchView = () => {
                                     </DropdownMenuRadioGroup>
                                 </DropdownMenuContent>
                             </DropdownMenu>
-                            <Button
-                                variant={multichannel ? 'default' : 'outline'}
-                                aria-pressed={multichannel}
-                                title='Only show multichannel (5.1 surround) releases'
-                                onClick={toggleMultichannel}
-                                className='my-2 flex gap-2 focus-visible:outline-none focus-visible:ring-transparent select-none shadow-none outline-none !z-[99]'
-                            >
-                                <AudioLinesIcon />
-                                <span className='hidden sm:inline'>Multichannel</span>
-                                <span className='sm:hidden'>5.1</span>
-                            </Button>
+                            {source !== 'apple' && (
+                                <Button
+                                    variant={multichannel ? 'default' : 'outline'}
+                                    aria-pressed={multichannel}
+                                    title='Only show multichannel (5.1 surround) releases'
+                                    onClick={toggleMultichannel}
+                                    className='my-2 flex gap-2 focus-visible:outline-none focus-visible:ring-transparent select-none shadow-none outline-none !z-[99]'
+                                >
+                                    <AudioLinesIcon />
+                                    <span className='hidden sm:inline'>Multichannel</span>
+                                    <span className='sm:hidden'>5.1</span>
+                                </Button>
+                            )}
                         </div>
                         <CountryPicker className='sm:hidden' />
                     </div>
