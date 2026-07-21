@@ -55,10 +55,9 @@ export type AppleOptionProps = APIOptionProps & { userToken?: string };
 
 export function testForRequirements() {
     if (process.env.APPLE_DEVELOPER_TOKEN && process.env.APPLE_DEVELOPER_TOKEN.length > 0) return true;
-    if (!process.env.APPLE_TEAM_ID) throw new Error('Deployment is missing APPLE_TEAM_ID environment variable.');
-    if (!process.env.APPLE_KEY_ID) throw new Error('Deployment is missing APPLE_KEY_ID environment variable.');
-    if (!process.env.APPLE_PRIVATE_KEY && !process.env.APPLE_PRIVATE_KEY_PATH)
-        throw new Error('Deployment is missing APPLE_PRIVATE_KEY (or APPLE_PRIVATE_KEY_PATH) environment variable.');
+    // No hard requirement anymore: getDeveloperToken() falls back to the public
+    // Apple Music web-player token when no APPLE_DEVELOPER_TOKEN / .p8 signing
+    // material is configured, so catalog access works with only a Music-User-Token.
     return true;
 }
 
@@ -73,13 +72,60 @@ function readPrivateKeyPem(): string {
 }
 
 let cachedToken: { jwt: string; exp: number } | null = null;
+let cachedWebToken: { jwt: string; exp: number } | null = null;
 
-// Mint (or return the cached) MusicKit developer token — a JWT signed with the
-// .p8 private key using ES256. Node's crypto.sign with dsaEncoding 'ieee-p1363'
-// emits the JOSE (r||s) signature format directly, so no external JWT library is
-// needed.
+const WEB_PLAYER_UA =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
+
+// Fallback developer token: the Apple Music web player ships a public MusicKit
+// JWT (iss "AMPWebPlay") embedded in its JS bundle. Scraping it lets catalog
+// access work with only a Music-User-Token — no Apple Developer Program
+// membership / .p8 required. The token rotates (~monthly), so cache by its own
+// exp and re-scrape as it nears expiry. The bundle hash changes too, so the
+// current bundle is discovered from the browse page each time we refresh.
+async function fetchWebPlayerToken(): Promise<string> {
+    const now = Math.floor(Date.now() / 1000);
+    if (cachedWebToken && cachedWebToken.exp - now > 86400) return cachedWebToken.jwt;
+
+    const agent = proxyAgent();
+    const get = async (url: string): Promise<string> => {
+        const target = process.env.CORS_PROXY ? process.env.CORS_PROXY + encodeURIComponent(url) : url;
+        const res = await axios.get(target, { headers: { 'User-Agent': WEB_PLAYER_UA }, responseType: 'text', httpAgent: agent, httpsAgent: agent });
+        return res.data as string;
+    };
+
+    const home = await get('https://music.apple.com/us/browse');
+    const bundle = (home.match(/\/assets\/index[-~][\w.]*\.js/) || [])[0];
+    if (!bundle) throw new Error('Apple web-player token: could not locate the app bundle on music.apple.com');
+    const js = await get('https://music.apple.com' + bundle);
+
+    const candidates = js.match(/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g) || [];
+    for (const jwt of candidates) {
+        try {
+            const payload = JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url').toString('utf8'));
+            if (payload.iss === 'AMPWebPlay' && payload.exp && payload.exp > now) {
+                cachedWebToken = { jwt, exp: payload.exp };
+                return jwt;
+            }
+        } catch {
+            // not a JWT we can read; keep scanning
+        }
+    }
+    throw new Error('Apple web-player token: no live AMPWebPlay token found in the app bundle');
+}
+
+// Return a MusicKit developer token from, in order: APPLE_DEVELOPER_TOKEN, a JWT
+// minted from .p8 signing material, or the scraped web-player token. Node's
+// crypto.sign with dsaEncoding 'ieee-p1363' emits the JOSE (r||s) signature
+// format directly, so no external JWT library is needed for the minting path.
 export async function getDeveloperToken(): Promise<string> {
     if (process.env.APPLE_DEVELOPER_TOKEN && process.env.APPLE_DEVELOPER_TOKEN.length > 0) return process.env.APPLE_DEVELOPER_TOKEN;
+
+    // Without self-signing material, fall back to the public web-player token.
+    if (!process.env.APPLE_TEAM_ID || !process.env.APPLE_KEY_ID || (!process.env.APPLE_PRIVATE_KEY && !process.env.APPLE_PRIVATE_KEY_PATH)) {
+        return fetchWebPlayerToken();
+    }
+
     const now = Math.floor(Date.now() / 1000);
     if (cachedToken && cachedToken.exp - now > 86400) return cachedToken.jwt;
 
@@ -103,6 +149,8 @@ export async function getAppleHeaders(userToken?: string): Promise<Record<string
     const headers: Record<string, string> = { Authorization: `Bearer ${await getDeveloperToken()}` };
     const resolvedUserToken = userToken || process.env.APPLE_MUSIC_USER_TOKEN;
     if (resolvedUserToken) headers['Music-User-Token'] = resolvedUserToken;
+    // Apple validates Origin for web-player (AMPWebPlay) tokens; harmless otherwise.
+    headers['Origin'] = 'https://music.apple.com';
     if (process.env.CORS_PROXY) headers['User-Agent'] = 'Tryptify';
     return headers;
 }
