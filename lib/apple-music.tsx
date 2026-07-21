@@ -178,8 +178,8 @@ export type DownloadJobManifest = {
     audioTraits: string[];
     m3u8: {
         masterUrl: string | null;
-        source: 'web-extendedAssetUrls' | null;
-        deviceOnly: boolean; // true when the hi-res/atmos master could not be reached web-side
+        source: 'web-extendedAssetUrls' | 'wrapper-device' | null;
+        deviceOnly: boolean; // true when the hi-res/atmos master could not be reached web-side or via a local wrapper
     };
     chosenVariant: AppleStreamVariant | null;
     variantTable: AppleStreamVariant[];

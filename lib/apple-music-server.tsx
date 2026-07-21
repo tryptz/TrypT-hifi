@@ -1,5 +1,6 @@
 import { getStorefrontForCountry } from '@/config/apple-storefronts';
 import { signFileURL } from './file-proxy';
+import { isWrapperConfigured, resolveDeviceM3u8 } from './apple-wrapper-client';
 import {
     AppleAlbum,
     AppleArtist,
@@ -378,10 +379,11 @@ export async function buildDownloadManifest(
     // Attempt to resolve + parse the HLS master web-side. Hi-res/Atmos masters
     // are usually device-gated, so this frequently falls through to the wrapper.
     const enhancedHls = a.extendedAssetUrls?.enhancedHls || null;
+    let masterUrl: string | null = enhancedHls;
     let variantTable: AppleStreamVariant[] = [];
     let chosenVariant: AppleStreamVariant | null = null;
     let deviceOnly = true;
-    let m3u8Source: 'web-extendedAssetUrls' | null = null;
+    let m3u8Source: 'web-extendedAssetUrls' | 'wrapper-device' | null = null;
     if (enhancedHls) {
         m3u8Source = 'web-extendedAssetUrls';
         try {
@@ -390,6 +392,31 @@ export async function buildDownloadManifest(
             deviceOnly = variantTable.length === 0;
         } catch {
             deviceOnly = true;
+        }
+    }
+
+    // If the developer-token web path could not reach a usable master (Apple
+    // gates the hi-res/Atmos master behind a real device), fall back to a locally
+    // running decryption wrapper, which resolves the device m3u8 for this adamId.
+    // This is the sole point where the catalog layer talks to the wrapper; all
+    // decrypt/render still happen on-device. No-ops unless APPLE_WRAPPER_HOST is set.
+    if ((deviceOnly || !masterUrl) && isWrapperConfigured()) {
+        try {
+            const deviceMaster = await resolveDeviceM3u8(adamId);
+            if (deviceMaster) {
+                const parsed = parseHlsMaster(await fetchText(deviceMaster, opts), deviceMaster);
+                if (parsed.length > 0) {
+                    masterUrl = deviceMaster;
+                    m3u8Source = 'wrapper-device';
+                    variantTable = parsed;
+                    chosenVariant = pickVariant(parsed, quality);
+                    deviceOnly = false;
+                }
+            }
+        } catch (error) {
+            // Wrapper unreachable/misconfigured: keep the web-side result and leave
+            // deviceOnly=true so Tryptify knows it must still resolve on-device.
+            console.warn(`[apple-wrapper] device m3u8 resolution failed for ${adamId}:`, error instanceof Error ? error.message : error);
         }
     }
 
@@ -425,7 +452,7 @@ export async function buildDownloadManifest(
             resolved: a.artwork?.url ? templateArtwork(a.artwork.url, Math.min(a.artwork.width || 3000, 3000)) : null
         },
         audioTraits: traits,
-        m3u8: { masterUrl: enhancedHls, source: m3u8Source, deviceOnly },
+        m3u8: { masterUrl, source: m3u8Source, deviceOnly },
         chosenVariant,
         variantTable,
         license: { licenseServerUrl: LICENSE_SERVER_URL, keySystem: 'com.apple.fps', requiresWrapper: true },
