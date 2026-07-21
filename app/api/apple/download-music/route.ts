@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildDownloadManifest } from '@/lib/apple-music-server';
 import { triggerDecryptIfMissing } from '@/lib/apple-decrypt-trigger';
+import { waitForCacheReady } from '@/lib/apple-file-cache';
 import { getRequestOrigin } from '@/lib/file-proxy';
 import z from 'zod';
 
@@ -28,9 +29,13 @@ export async function GET(request: NextRequest) {
             userToken,
             origin: getRequestOrigin(request)
         });
-        // If the decrypted file isn't cached yet, kick off the home decrypt agent
-        // (fire-and-forget) so delivery.streamUrl becomes available shortly.
-        void triggerDecryptIfMissing(track_id, quality);
+        // If the decrypted file isn't cached yet, trigger the home decrypt agent
+        // and WAIT (bounded) for the file to land, so the first request returns a
+        // live delivery.streamUrl instead of one that 404s until the decrypt finishes.
+        if (process.env.APPLE_DECRYPT_AGENT) {
+            await triggerDecryptIfMissing(track_id, quality);
+            await waitForCacheReady(track_id, Number(process.env.APPLE_DECRYPT_WAIT_MS) || 90000);
+        }
         return new NextResponse(JSON.stringify({ success: true, data: { manifest } }), { status: 200 });
     } catch (error: any) {
         return new NextResponse(

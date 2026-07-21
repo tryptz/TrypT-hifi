@@ -34,6 +34,29 @@ export async function ensureCacheDir(): Promise<void> {
     await fs.promises.mkdir(cacheDir(), { recursive: true });
 }
 
+// Poll until adamId's cache file exists and is fresh, or the timeout elapses.
+// Lets the download route wait for a just-triggered decrypt so the first request
+// returns a live streamUrl instead of one that 404s until the file lands.
+export async function waitForCacheReady(adamId: string, timeoutMs = 90_000, intervalMs = 1_500): Promise<boolean> {
+    let file: string;
+    try {
+        file = cacheFilePath(adamId);
+    } catch {
+        return false;
+    }
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+        try {
+            const st = await fs.promises.stat(file);
+            if (st.size > 0 && Date.now() - st.mtimeMs < ttlSeconds() * 1000) return true;
+        } catch {
+            // not present yet
+        }
+        if (Date.now() >= deadline) return false;
+        await new Promise((r) => setTimeout(r, intervalMs));
+    }
+}
+
 // Delete cache files older than the TTL. Called opportunistically per request so
 // no background timer is needed (fits the serverless-ish Railway model).
 export async function sweepExpired(): Promise<void> {
