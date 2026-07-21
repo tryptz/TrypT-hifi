@@ -1,6 +1,7 @@
 import { getStorefrontForCountry } from '@/config/apple-storefronts';
 import { signFileURL } from './file-proxy';
 import { isWrapperConfigured, resolveDeviceM3u8 } from './apple-wrapper-client';
+import { signStreamURL, ttlSeconds as cacheTtlSeconds } from './apple-file-cache';
 import {
     AppleAlbum,
     AppleArtist,
@@ -473,6 +474,16 @@ export async function buildDownloadManifest(
     const ttml = await fetchLyricsTtml(adamId, storefront, opts);
     const albumAdamId = song.relationships?.albums?.data?.[0]?.id ?? null;
 
+    // Signed cloud URL that will serve the decrypted file once the home wrapper
+    // uploads it back (short TTL). Needs an origin + a signing secret; skipped
+    // silently if either is missing.
+    let delivery: DownloadJobManifest['delivery'];
+    try {
+        if (origin) delivery = { streamUrl: signStreamURL(adamId, origin), fileTtlSeconds: cacheTtlSeconds() };
+    } catch {
+        delivery = undefined;
+    }
+
     const manifest: Omit<DownloadJobManifest, 'sig'> = {
         version: 1,
         source: 'apple-music',
@@ -512,7 +523,8 @@ export async function buildDownloadManifest(
             decrypt: true,
             atmosRender: quality === 'atmos'
         },
-        createdAt: Math.floor(Date.now() / 1000)
+        createdAt: Math.floor(Date.now() / 1000),
+        ...(delivery ? { delivery } : {})
     };
 
     return { ...manifest, sig: signManifest(manifest) };

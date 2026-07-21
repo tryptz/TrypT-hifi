@@ -193,6 +193,12 @@ export type DownloadJobManifest = {
         ttml: string | null;
     };
     previewUrl: string | null;
+    // Signed cloud URL that serves the decrypted file once the home wrapper
+    // uploads it back to the app (short TTL). Absent until an origin is known.
+    delivery?: {
+        streamUrl: string;
+        fileTtlSeconds: number;
+    };
     // Explicit boundary flags telling Tryptify which stages it must perform.
     requiresWrapper: {
         m3u8: boolean;
