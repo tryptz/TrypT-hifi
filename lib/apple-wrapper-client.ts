@@ -22,6 +22,8 @@
 // /research only — see the "Legal reality" section of the design doc.
 // ---------------------------------------------------------------------------
 
+import type { Socket } from 'node:net';
+
 // Lazy-require the Node builtin (this module must never be pulled into the
 // client bundle; mirrors the guarded requires in lib/apple-music-server.tsx).
 let netModule: typeof import('node:net') | undefined;
@@ -48,11 +50,54 @@ function timeoutMs(): number {
     return Number(process.env.APPLE_WRAPPER_TIMEOUT_MS) || 8000;
 }
 
+// Optional SOCKS5 proxy to reach the wrapper. Needed when the app runs somewhere
+// that can only reach the tailnet through Tailscale userspace networking (e.g.
+// Railway), where tailscaled exposes a local SOCKS5 proxy. Accepts "host:port"
+// or "socks5://host:port". Unset = direct TCP dial.
+function socksProxy(): { host: string; port: number } | null {
+    const raw = process.env.APPLE_WRAPPER_SOCKS5;
+    if (!raw) return null;
+    const cleaned = raw.replace(/^socks5?:\/\//i, '');
+    const idx = cleaned.lastIndexOf(':');
+    if (idx < 1) return null;
+    const host = cleaned.slice(0, idx);
+    const port = Number(cleaned.slice(idx + 1));
+    if (!host || !Number.isFinite(port)) return null;
+    return { host, port };
+}
+
 // The wrapper integration is opt-in: only active when a host is explicitly
 // configured. Callers gate on this so the default (web-only) behaviour is
 // unchanged for anyone who has not stood up a local wrapper.
 export function isWrapperConfigured(): boolean {
     return Boolean(process.env.APPLE_WRAPPER_HOST);
+}
+
+// Open a connected socket to the wrapper, optionally tunnelled through a SOCKS5
+// proxy (Tailscale userspace networking). Resolves once the socket is connected.
+async function dialWrapper(host: string, port: number): Promise<Socket> {
+    const proxy = socksProxy();
+    if (proxy) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { SocksClient } = require('socks');
+        const info = await SocksClient.createConnection({
+            proxy: { host: proxy.host, port: proxy.port, type: 5 },
+            command: 'connect',
+            destination: { host, port },
+            timeout: timeoutMs()
+        });
+        return info.socket as Socket;
+    }
+    return new Promise<Socket>((resolve, reject) => {
+        const socket = net().createConnection({ host, port });
+        socket.setTimeout(timeoutMs());
+        socket.once('connect', () => resolve(socket));
+        socket.once('timeout', () => {
+            socket.destroy();
+            reject(new Error(`wrapper connect timed out after ${timeoutMs()}ms (${host}:${port})`));
+        });
+        socket.once('error', reject);
+    });
 }
 
 // --- Port 20020: resolve the device m3u8 master-playlist URL ----------------
@@ -68,8 +113,8 @@ export async function resolveDeviceM3u8(adamId: string): Promise<string | null> 
     if (idBuf.length === 0) throw new Error('resolveDeviceM3u8: empty adamId');
     if (idBuf.length > 255) throw new Error(`resolveDeviceM3u8: adamId too long for the 1-byte length prefix: ${adamId}`);
 
+    const socket = await dialWrapper(host, port);
     return new Promise<string | null>((resolve, reject) => {
-        const socket = net().createConnection({ host, port });
         const chunks: Buffer[] = [];
         let settled = false;
 
@@ -87,9 +132,6 @@ export async function resolveDeviceM3u8(adamId: string): Promise<string | null> 
         };
 
         socket.setTimeout(timeoutMs());
-        socket.on('connect', () => {
-            socket.write(Buffer.concat([Buffer.from([idBuf.length]), idBuf]));
-        });
         socket.on('data', (d) => {
             chunks.push(d);
             if (Buffer.concat(chunks).includes(0x0a)) emit(); // got the terminating newline
@@ -97,6 +139,8 @@ export async function resolveDeviceM3u8(adamId: string): Promise<string | null> 
         socket.on('end', emit); // server may close without a trailing newline
         socket.on('timeout', () => finish(new Error(`wrapper get-m3u8 timed out after ${timeoutMs()}ms (${host}:${port})`)));
         socket.on('error', (e) => finish(e));
+        // Socket is already connected (direct or via SOCKS); send the request now.
+        socket.write(Buffer.concat([Buffer.from([idBuf.length]), idBuf]));
     });
 }
 
