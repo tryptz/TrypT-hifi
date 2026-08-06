@@ -15,6 +15,9 @@ import { useInView } from 'react-intersection-observer';
 import { useSettings } from '@/lib/settings-provider';
 import { useTheme } from 'next-themes';
 import CountryPicker from '@/components/country-picker';
+import SpotifyImportDialog from '@/components/spotify-import-dialog';
+import { FaSpotify } from '@react-icons/all-files/fa/FaSpotify';
+import { parseSpotifyPlaylistId } from '@/lib/spotify';
 import { useCountry } from '@/lib/country-provider';
 import { sourceApiBase, useSource } from '@/lib/source-provider';
 
@@ -48,6 +51,8 @@ const SearchView = () => {
     const { settings } = useSettings();
     const { country } = useCountry();
     const { source, setSource } = useSource();
+    const [spotifyImportOpen, setSpotifyImportOpen] = useState<boolean>(false);
+    const [spotifyImportUrl, setSpotifyImportUrl] = useState<string>('');
 
     useEffect(() => {
         console.log(`%c${process.env.NEXT_PUBLIC_APPLICATION_NAME}`, 'font-size: 25px; font-weight: bold;');
@@ -220,6 +225,13 @@ const SearchView = () => {
     }, [logoAnimationControls, mounted, logoSrc]);
 
     const onSearch = async (query: string, searchFieldInput: string = searchField, multichannelInput: boolean = multichannel) => {
+        // A pasted Spotify playlist link isn't searchable — hand it to the importer.
+        if (parseSpotifyPlaylistId(query)) {
+            setSpotifyImportUrl(query.trim());
+            setSpotifyImportOpen(true);
+            setSearching(false);
+            return;
+        }
         setQuery(query);
         setSearchError('');
         const filter = filterData.find((filter) => filter.value === searchFieldInput) || filterData[0];
@@ -346,6 +358,15 @@ const SearchView = () => {
                                     </DropdownMenuRadioGroup>
                                 </DropdownMenuContent>
                             </DropdownMenu>
+                            <Button
+                                variant='outline'
+                                title='Import a Spotify playlist and translate it to Qobuz'
+                                onClick={() => setSpotifyImportOpen(true)}
+                                className='my-2 flex gap-2 focus-visible:outline-none focus-visible:ring-transparent select-none shadow-none outline-none !z-[99]'
+                            >
+                                <FaSpotify />
+                                <span className='hidden sm:inline'>Import Playlist</span>
+                            </Button>
                             {source !== 'apple' && (
                                 <Button
                                     variant={multichannel ? 'default' : 'outline'}
@@ -417,6 +438,8 @@ const SearchView = () => {
                     </div>
                 )}
             </div>
+
+            <SpotifyImportDialog open={spotifyImportOpen} setOpen={setSpotifyImportOpen} initialUrl={spotifyImportUrl} />
         </>
     );
 };

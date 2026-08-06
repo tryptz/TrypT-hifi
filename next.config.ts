@@ -10,6 +10,14 @@ const nextConfig: NextConfig = {
                 port: '',
                 pathname: '**',
                 search: ''
+            },
+            {
+                // Spotify playlist covers shown by the playlist importer.
+                protocol: 'https',
+                hostname: 'i.scdn.co',
+                port: '',
+                pathname: '**',
+                search: ''
             }
         ]
     },

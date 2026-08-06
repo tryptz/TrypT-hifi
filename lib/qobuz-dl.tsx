@@ -177,6 +177,14 @@ export const QOBUZ_ALBUM_URL_REGEX = /https:\/\/(play|open)\.qobuz\.com\/album\/
 export const QOBUZ_TRACK_URL_REGEX = /https:\/\/(play|open)\.qobuz\.com\/track\/\d+/;
 export const QOBUZ_ARTIST_URL_REGEX = /https:\/\/(play|open)\.qobuz\.com\/artist\/\d+/;
 
+export function getQobuzTrackUrl(trackId: number | string) {
+    return `https://open.qobuz.com/track/${trackId}`;
+}
+
+export function getQobuzAlbumUrl(albumId: string) {
+    return `https://open.qobuz.com/album/${albumId}`;
+}
+
 export function getAlbum(input: QobuzAlbum | QobuzTrack | QobuzArtist) {
     return ((input as QobuzAlbum).image ? input : (input as QobuzTrack).album) as QobuzAlbum;
 }

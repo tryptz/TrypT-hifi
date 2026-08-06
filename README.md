@@ -14,6 +14,7 @@ Qobuz-DL provides a fast and easy way to download music using Qobuz in a variety
 - Download any song or album from Qobuz.
 - Re-encode audio provided by Qobuz to a variety of different lossless and lossy codecs using FFmpeg.
 - Apply metadata to downloaded songs.
+- Import a Spotify playlist and translate every track to its Qobuz equivalent.
 
 ## Table of Contents
 
@@ -90,6 +91,19 @@ docker-compose up -d
 
 Before you can use Qobuz-DL, you need to change the .env file in the root directory. The default configuration will NOT work. QOBUZ_APP_ID and QOBUZ_SECRET must be set to the correct values. To find these you can use [this tool](https://github.com/QobuzDL/Qobuz-AppID-Secret-Tool).
 Additionally, in order to download files longer than 30 seconds, a valid Qobuz token is needed. This can be found in the localuser.token key of localstorage on the [official Qobuz website](https://play.qobuz.com/) for any paying members.
+
+### Spotify playlist importer (optional)
+
+Pressing **Import Playlist** (or pasting a Spotify playlist link straight into the search bar) reads a public Spotify playlist and translates every track to its Qobuz equivalent, giving you `open.qobuz.com` links you can copy, open, or send straight to the download queue.
+
+It needs a Spotify app — create one at [the Spotify developer dashboard](https://developer.spotify.com/dashboard) and set:
+
+- `SPOTIFY_CLIENT_ID`
+- `SPOTIFY_CLIENT_SECRET`
+
+No redirect URI or user login is required; the importer uses the client-credentials flow, so it can only read public playlists. Optionally set `SPOTIFY_IMPORT_LIMIT` (default `500`) to change how many tracks a single import pulls in. If the credentials are missing the importer simply reports that the deployment is not configured.
+
+Tracks are matched by ISRC first, which pins the exact recording. When Spotify does not expose one — or Qobuz does not index it — the importer falls back to a scored text search over title, artist and duration, and labels each row with how confident the match is (`ISRC`, `High`, `Medium`, `Low`). Anything that fails to clear the bar is reported as "No Qobuz match" rather than guessing.
 
 ### Discord bot integration (optional)
 
