@@ -53,6 +53,21 @@ const SearchView = () => {
     const { source, setSource } = useSource();
     const [spotifyImportOpen, setSpotifyImportOpen] = useState<boolean>(false);
     const [spotifyImportUrl, setSpotifyImportUrl] = useState<string>('');
+    const [spotifyAuthNotice, setSpotifyAuthNotice] = useState<string>('');
+
+    // The Spotify OAuth callback lands back here; reopen the importer where the
+    // user left off and tidy the query string away.
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const status = params.get('spotify');
+        if (!status) return;
+        if (status === 'error') setSpotifyAuthNotice(`Spotify login failed (${params.get('spotify_error') || 'unknown error'}).`);
+        setSpotifyImportOpen(true);
+        params.delete('spotify');
+        params.delete('spotify_error');
+        const query = params.toString();
+        window.history.replaceState({}, '', window.location.pathname + (query ? `?${query}` : ''));
+    }, []);
 
     useEffect(() => {
         console.log(`%c${process.env.NEXT_PUBLIC_APPLICATION_NAME}`, 'font-size: 25px; font-weight: bold;');
@@ -439,7 +454,12 @@ const SearchView = () => {
                 )}
             </div>
 
-            <SpotifyImportDialog open={spotifyImportOpen} setOpen={setSpotifyImportOpen} initialUrl={spotifyImportUrl} />
+            <SpotifyImportDialog
+                open={spotifyImportOpen}
+                setOpen={setSpotifyImportOpen}
+                initialUrl={spotifyImportUrl}
+                authNotice={spotifyAuthNotice}
+            />
         </>
     );
 };

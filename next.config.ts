@@ -12,9 +12,17 @@ const nextConfig: NextConfig = {
                 search: ''
             },
             {
-                // Spotify playlist covers shown by the playlist importer.
+                // Spotify playlist covers and profile pictures shown by the importer.
+                // Covers come from i./mosaic.scdn.co, newer ones from *.spotifycdn.com.
                 protocol: 'https',
-                hostname: 'i.scdn.co',
+                hostname: '**.scdn.co',
+                port: '',
+                pathname: '**',
+                search: ''
+            },
+            {
+                protocol: 'https',
+                hostname: '**.spotifycdn.com',
                 port: '',
                 pathname: '**',
                 search: ''

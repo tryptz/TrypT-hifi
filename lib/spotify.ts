@@ -28,6 +28,26 @@ export type SpotifyPlaylist = {
     tracks: SpotifyTrack[];
 };
 
+// Liked Songs isn't a real playlist id, so the importer addresses it with this
+// sentinel and the server maps it onto /me/tracks.
+export const LIKED_SONGS_ID = 'liked';
+
+export type SpotifyPlaylistSummary = {
+    id: string;
+    name: string;
+    owner: string;
+    image: string | null;
+    url: string;
+    total: number;
+};
+
+export type SpotifyUser = {
+    id: string;
+    name: string;
+    image: string | null;
+    url: string | null;
+};
+
 // How the Qobuz equivalent was found. An ISRC hit is an identifier match, the
 // rest come from scoring text search candidates.
 export type MatchConfidence = 'isrc' | 'high' | 'medium' | 'low';

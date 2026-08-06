@@ -15,6 +15,7 @@ Qobuz-DL provides a fast and easy way to download music using Qobuz in a variety
 - Re-encode audio provided by Qobuz to a variety of different lossless and lossy codecs using FFmpeg.
 - Apply metadata to downloaded songs.
 - Import a Spotify playlist and translate every track to its Qobuz equivalent.
+- Log in with Spotify to browse and download your own playlists, including private ones and Liked Songs.
 
 ## Table of Contents
 
@@ -101,7 +102,21 @@ It needs a Spotify app — create one at [the Spotify developer dashboard](https
 - `SPOTIFY_CLIENT_ID`
 - `SPOTIFY_CLIENT_SECRET`
 
-No redirect URI or user login is required; the importer uses the client-credentials flow, so it can only read public playlists. Optionally set `SPOTIFY_IMPORT_LIMIT` (default `500`) to change how many tracks a single import pulls in. If the credentials are missing the importer simply reports that the deployment is not configured.
+Without logging in, the importer uses the client-credentials flow and can only read public playlists. Optionally set `SPOTIFY_IMPORT_LIMIT` (default `500`) to change how many tracks a single import pulls in. If the credentials are missing the importer simply reports that the deployment is not configured.
+
+#### Logging in with Spotify
+
+**Log in with Spotify** turns the dialog into a playlist window: your own playlists — private and collaborative ones included, plus Liked Songs — are listed for you to pick, match and download without pasting any links.
+
+To enable it, add the callback URL to your Spotify app's **Redirect URIs**:
+
+```
+https://<your-domain>/api/spotify/auth/callback
+```
+
+The redirect URI is derived from the incoming request, which is what you want for a plain deployment. Behind a proxy or custom domain, pin it with `SPOTIFY_REDIRECT_URI` so it matches the dashboard entry exactly — Spotify rejects the login otherwise.
+
+Login uses the OAuth authorization-code flow with read-only scopes (`playlist-read-private`, `playlist-read-collaborative`, `user-library-read`, `user-read-private`) — the app never writes anything back to Spotify. Tokens live in an encrypted, httpOnly cookie (keyed off `FILE_PROXY_SECRET`, falling back to `SPOTIFY_CLIENT_SECRET`), are refreshed automatically, and are dropped by **Log out**. Access itself is revoked from your [Spotify account's apps page](https://www.spotify.com/account/apps/).
 
 Tracks are matched by ISRC first, which pins the exact recording. When Spotify does not expose one — or Qobuz does not index it — the importer falls back to a scored text search over title, artist and duration, and labels each row with how confident the match is (`ISRC`, `High`, `Medium`, `Low`). Anything that fails to clear the bar is reported as "No Qobuz match" rather than guessing.
 

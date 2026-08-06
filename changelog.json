@@ -5,7 +5,8 @@
         "changes": [
             "Import a Spotify playlist and translate every track to its Qobuz equivalent. Paste a playlist link into the search bar or use the new 'Import Playlist' button.",
             "Matches are made on ISRC where possible, falling back to a scored title/artist/duration search, and each row shows how confident the match is.",
-            "Matched tracks can be opened on Qobuz, copied as a list of links, or sent to the download queue in one go."
+            "Matched tracks can be opened on Qobuz, copied as a list of links, or sent to the download queue in one go.",
+            "Log in with Spotify to browse your own playlist library in the importer — private and collaborative playlists plus Liked Songs — and download any of them without pasting a link."
         ]
     },
     {

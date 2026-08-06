@@ -9,12 +9,23 @@ import { Input } from './ui/input';
 import { Progress } from './ui/progress';
 import { ScrollArea } from './ui/scroll-area';
 import { Separator } from './ui/separator';
-import { CheckIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, Loader2Icon, SearchXIcon } from 'lucide-react';
+import { ArrowLeftIcon, CheckIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, Loader2Icon, LogOutIcon, SearchXIcon } from 'lucide-react';
 import { FaSpotify } from '@react-icons/all-files/fa/FaSpotify';
 import { cn } from '@/lib/utils';
 import { createDownloadJob } from '@/lib/download-job';
 import { formatArtists, formatTitle, QobuzTrack } from '@/lib/qobuz-dl';
-import { formatSpotifyArtists, matchConfidenceLabels, parseSpotifyPlaylistId, SpotifyMatch, SpotifyPlaylist, SpotifyTrack } from '@/lib/spotify';
+import {
+    formatSpotifyArtists,
+    LIKED_SONGS_ID,
+    matchConfidenceLabels,
+    parseSpotifyPlaylistId,
+    SpotifyMatch,
+    SpotifyPlaylist,
+    SpotifyPlaylistSummary,
+    SpotifyTrack,
+    SpotifyUser
+} from '@/lib/spotify';
+import SpotifyPlaylistLibrary from './spotify-playlist-library';
 import { useCountry } from '@/lib/country-provider';
 import { useFFmpeg } from '@/lib/ffmpeg-provider';
 import { useSettings } from '@/lib/settings-provider';
@@ -30,8 +41,24 @@ type ImportStage = 'idle' | 'loading' | 'matching' | 'done';
 // `failed` separates "Qobuz has nothing like this" from "the lookup itself broke".
 type TrackMatch = SpotifyMatch & { failed?: boolean };
 
-const SpotifyImportDialog = ({ open, setOpen, initialUrl = '' }: { open: boolean; setOpen: (open: boolean) => void; initialUrl?: string }) => {
+type SpotifySessionInfo = { configured: boolean; authenticated: boolean; user: SpotifyUser | null };
+
+const SpotifyImportDialog = ({
+    open,
+    setOpen,
+    initialUrl = '',
+    authNotice = ''
+}: {
+    open: boolean;
+    setOpen: (open: boolean) => void;
+    initialUrl?: string;
+    authNotice?: string;
+}) => {
     const [url, setUrl] = useState(initialUrl);
+    const [session, setSession] = useState<SpotifySessionInfo | null>(null);
+    const [library, setLibrary] = useState<{ items: SpotifyPlaylistSummary[]; hasMore: boolean } | null>(null);
+    const [libraryLoading, setLibraryLoading] = useState(false);
+    const [libraryError, setLibraryError] = useState('');
     const [stage, setStage] = useState<ImportStage>('idle');
     const [error, setError] = useState<string>('');
     const [playlist, setPlaylist] = useState<SpotifyPlaylist | null>(null);
@@ -83,8 +110,9 @@ const SpotifyImportDialog = ({ open, setOpen, initialUrl = '' }: { open: boolean
         await Promise.all(Array.from({ length: Math.min(MATCH_CONCURRENCY, loaded.tracks.length) }, worker));
     };
 
-    const importPlaylist = async (rawUrl: string) => {
-        if (!parseSpotifyPlaylistId(rawUrl)) {
+    // Either a pasted link or a playlist picked from the signed-in user's library.
+    const importPlaylist = async (target: { url?: string; id?: string }) => {
+        if (target.url && !parseSpotifyPlaylistId(target.url)) {
             setError('That does not look like a Spotify playlist link.');
             return;
         }
@@ -98,7 +126,10 @@ const SpotifyImportDialog = ({ open, setOpen, initialUrl = '' }: { open: boolean
         setCopied(false);
         setStage('loading');
         try {
-            const response = await axios.get('/api/spotify/playlist', { params: { url: rawUrl }, signal: controller.signal });
+            const response = await axios.get('/api/spotify/playlist', {
+                params: target.id ? { id: target.id } : { url: target.url },
+                signal: controller.signal
+            });
             const loaded: SpotifyPlaylist = response.data.data;
             if (controller.signal.aborted) return;
             setPlaylist(loaded);
@@ -114,6 +145,61 @@ const SpotifyImportDialog = ({ open, setOpen, initialUrl = '' }: { open: boolean
         }
     };
 
+    // Drops the current results and returns to the playlist window, stopping any
+    // matching still in flight.
+    const backToLibrary = () => {
+        controllerRef.current?.abort();
+        autoImportedRef.current = '';
+        setPlaylist(null);
+        setMatches({});
+        setError('');
+        setStage('idle');
+        if (!library) loadLibrary(0);
+    };
+
+    const loadLibrary = async (offset: number) => {
+        setLibraryLoading(true);
+        setLibraryError('');
+        try {
+            const response = await axios.get('/api/spotify/me/playlists', { params: { offset } });
+            const page = response.data.data;
+            setLibrary((previous) =>
+                offset === 0 || !previous ? { items: page.items, hasMore: page.hasMore } : { items: [...previous.items, ...page.items], hasMore: page.hasMore }
+            );
+        } catch (libraryFetchError: any) {
+            const message = libraryFetchError?.response?.data?.error;
+            setLibraryError(typeof message === 'string' ? message : libraryFetchError.message || 'Could not load your playlists.');
+        }
+        setLibraryLoading(false);
+    };
+
+    const loadSession = async () => {
+        try {
+            const response = await axios.get('/api/spotify/auth/session');
+            const info: SpotifySessionInfo = response.data.data;
+            setSession(info);
+            if (info.authenticated && !library) loadLibrary(0);
+        } catch {
+            setSession({ configured: true, authenticated: false, user: null });
+        }
+    };
+
+    const logout = async () => {
+        await axios.post('/api/spotify/auth/session').catch(() => {});
+        setSession({ configured: true, authenticated: false, user: null });
+        setLibrary(null);
+    };
+
+    // The dialog is mounted for the whole session, so the login state is
+    // (re)checked each time it is opened — including after the OAuth redirect.
+    useEffect(() => {
+        if (open) loadSession();
+    }, [open]);
+
+    useEffect(() => {
+        if (authNotice) setError(authNotice);
+    }, [authNotice]);
+
     // A link pasted into the search bar arrives as `initialUrl` and imports itself
     // once; reopening the dialog afterwards keeps the results it already has.
     const autoImportedRef = useRef<string>('');
@@ -122,7 +208,7 @@ const SpotifyImportDialog = ({ open, setOpen, initialUrl = '' }: { open: boolean
         setUrl(initialUrl);
         if (open && autoImportedRef.current !== initialUrl) {
             autoImportedRef.current = initialUrl;
-            importPlaylist(initialUrl);
+            importPlaylist({ url: initialUrl });
         }
     }, [initialUrl, open]);
 
@@ -180,13 +266,14 @@ const SpotifyImportDialog = ({ open, setOpen, initialUrl = '' }: { open: boolean
                         spellCheck={false}
                         onChange={(event) => setUrl(event.currentTarget.value)}
                         onKeyDown={(event) => {
-                            if (event.key === 'Enter' && url.trim().length > 0 && stage !== 'loading' && stage !== 'matching') importPlaylist(url.trim());
+                            if (event.key === 'Enter' && url.trim().length > 0 && stage !== 'loading' && stage !== 'matching')
+                                importPlaylist({ url: url.trim() });
                         }}
                     />
                     <Button
                         className='shrink-0'
                         disabled={url.trim().length === 0 || stage === 'loading' || stage === 'matching'}
-                        onClick={() => importPlaylist(url.trim())}
+                        onClick={() => importPlaylist({ url: url.trim() })}
                     >
                         {stage === 'loading' || stage === 'matching' ? <Loader2Icon className='animate-spin' /> : 'Import'}
                     </Button>
@@ -194,8 +281,66 @@ const SpotifyImportDialog = ({ open, setOpen, initialUrl = '' }: { open: boolean
 
                 {error && <p className='text-destructive text-sm font-semibold'>{error}</p>}
 
+                {/* Signed out: offer the login that unlocks private playlists and Liked Songs. */}
+                {session?.configured && !session.authenticated && (
+                    <div className='flex flex-wrap items-center justify-between gap-2 rounded-md border p-3'>
+                        <p className='text-sm text-muted-foreground max-w-[60%]'>
+                            Log in with Spotify to browse your own playlists, including private ones and Liked Songs.
+                        </p>
+                        {/* A full navigation, not client-side routing: the OAuth
+                            handshake leaves the app and comes back via redirect. */}
+                        <Button className='flex gap-2 shrink-0' onClick={() => (window.location.href = '/api/spotify/auth/login')}>
+                            <FaSpotify />
+                            <span>Log in with Spotify</span>
+                        </Button>
+                    </div>
+                )}
+
+                {session && !session.configured && (
+                    <p className='text-sm text-muted-foreground'>
+                        Spotify login is not configured on this deployment. Public playlist links still work once SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET
+                        are set.
+                    </p>
+                )}
+
+                {/* Signed in, nothing picked yet: the playlist window. */}
+                {session?.authenticated && !playlist && (
+                    <>
+                        <div className='flex items-center justify-between gap-2'>
+                            <div className='flex items-center gap-2 overflow-hidden'>
+                                {session.user?.image && (
+                                    <div className='relative shrink-0 aspect-square w-7 h-7 rounded-full overflow-hidden'>
+                                        <Image fill src={session.user.image} alt={session.user.name} sizes='28px' className='object-cover' />
+                                    </div>
+                                )}
+                                <p className='text-sm font-semibold truncate'>{session.user?.name}</p>
+                            </div>
+                            <Button variant='ghost' size='sm' className='flex gap-2 shrink-0' onClick={logout}>
+                                <LogOutIcon className='!size-4' />
+                                <span>Log out</span>
+                            </Button>
+                        </div>
+                        <Separator />
+                        <SpotifyPlaylistLibrary
+                            items={library?.items ?? []}
+                            hasMore={!!library?.hasMore}
+                            loading={libraryLoading}
+                            error={libraryError}
+                            onSelect={(selected) => importPlaylist({ id: selected.id })}
+                            // Liked Songs is a local addition, so it must not count towards Spotify's paging offset.
+                            onLoadMore={() => loadLibrary((library?.items ?? []).filter((item) => item.id !== LIKED_SONGS_ID).length)}
+                        />
+                    </>
+                )}
+
                 {playlist && (
                     <>
+                        {session?.authenticated && (
+                            <Button variant='ghost' size='sm' className='flex gap-2 self-start' onClick={backToLibrary}>
+                                <ArrowLeftIcon className='!size-4' />
+                                <span>Your playlists</span>
+                            </Button>
+                        )}
                         <div className='flex gap-3 overflow-hidden'>
                             {playlist.image && (
                                 <div className='relative shrink-0 aspect-square w-[72px] h-[72px] rounded-sm overflow-hidden'>

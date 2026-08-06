@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { SpotifyPlaylist, SpotifyTrack } from './spotify';
+import { LIKED_SONGS_ID, SpotifyPlaylist, SpotifyPlaylistSummary, SpotifyTrack, SpotifyUser } from './spotify';
 
 // Functions only to be used by servers
 // Do not import this file into the client
@@ -10,7 +10,7 @@ if (typeof window === 'undefined') {
     SocksProxyAgent = require('socks-proxy-agent').SocksProxyAgent;
 }
 
-const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
+const SPOTIFY_TOKEN_URL = `${(process.env.SPOTIFY_ACCOUNTS_BASE || 'https://accounts.spotify.com').replace(/\/$/, '')}/api/token`;
 const SPOTIFY_API_BASE = process.env.SPOTIFY_API_BASE || 'https://api.spotify.com/v1/';
 const SPOTIFY_PAGE_SIZE = 100;
 
@@ -26,7 +26,7 @@ export function testForSpotifyRequirements() {
     return true;
 }
 
-function createProxyAgent() {
+export function createSpotifyProxyAgent() {
     if (!process.env.SOCKS5_PROXY) return undefined;
     return new SocksProxyAgent('socks5://' + process.env.SOCKS5_PROXY);
 }
@@ -38,7 +38,7 @@ export async function getSpotifyAccessToken(): Promise<string> {
     // Reuse the client-credentials token until it is close to expiring.
     if (cachedToken && cachedToken.expiresAt > Date.now() + 30000) return cachedToken.value;
 
-    const proxyAgent = createProxyAgent();
+    const proxyAgent = createSpotifyProxyAgent();
     const credentials = Buffer.from(`${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`).toString('base64');
     try {
         const response = await axios.post(SPOTIFY_TOKEN_URL, new URLSearchParams({ grant_type: 'client_credentials' }).toString(), {
@@ -63,7 +63,7 @@ export async function getSpotifyAccessToken(): Promise<string> {
 }
 
 async function spotifyGet(path: string, params: Record<string, string | number>, token: string) {
-    const proxyAgent = createProxyAgent();
+    const proxyAgent = createSpotifyProxyAgent();
     try {
         const response = await axios.get(new URL(path, SPOTIFY_API_BASE).toString(), {
             params,
@@ -74,8 +74,11 @@ async function spotifyGet(path: string, params: Record<string, string | number>,
         return response.data;
     } catch (error: any) {
         const status = error?.response?.status;
-        if (status === 404) throw new Error('That Spotify playlist could not be found. Make sure it is public.');
-        if (status === 401 || status === 403) throw new Error('Spotify denied access to that playlist. Private and algorithmic playlists cannot be imported.');
+        if (status === 404) throw new Error('That Spotify playlist could not be found. Sign in with Spotify to import your own private playlists.');
+        if (status === 401 || status === 403)
+            throw new Error(
+                'Spotify denied access to that playlist. Sign in with Spotify to import private playlists; algorithmic playlists cannot be imported.'
+            );
         if (status === 429) throw new Error('Spotify is rate limiting this deployment. Try again in a moment.');
         throw new Error(error?.response?.data?.error?.message || error?.message || 'An error occurred talking to Spotify.');
     }
@@ -99,8 +102,15 @@ function parseTrack(item: any): SpotifyTrack | null {
     };
 }
 
-export async function getPlaylist(playlistId: string): Promise<SpotifyPlaylist> {
-    const token = await getSpotifyAccessToken();
+// `userToken` is the signed-in user's access token when there is one, which is
+// what makes private and collaborative playlists importable. Without it the
+// client-credentials token is used and only public playlists resolve.
+export async function getPlaylist(playlistId: string, userToken?: string | null): Promise<SpotifyPlaylist> {
+    if (playlistId === LIKED_SONGS_ID) {
+        if (!userToken) throw new Error('Sign in with Spotify to import your Liked Songs.');
+        return getLikedSongs(userToken);
+    }
+    const token = userToken || (await getSpotifyAccessToken());
 
     const playlist = await spotifyGet(
         `playlists/${playlistId}`,
@@ -141,6 +151,74 @@ export async function getPlaylist(playlistId: string): Promise<SpotifyPlaylist> 
         url: playlist.external_urls?.spotify || `https://open.spotify.com/playlist/${playlistId}`,
         total,
         truncated: total > fetched,
+        tracks
+    };
+}
+
+export async function getCurrentUser(userToken: string): Promise<SpotifyUser> {
+    const profile = await spotifyGet('me', {}, userToken);
+    return {
+        id: profile.id,
+        name: profile.display_name || profile.id,
+        image: profile.images?.[0]?.url || null,
+        url: profile.external_urls?.spotify || null
+    };
+}
+
+// The signed-in user's own library: their playlists plus the collaborative ones
+// they follow. Liked Songs is prepended by the route as a pseudo-playlist.
+export async function getUserPlaylists(userToken: string, offset: number = 0, limit: number = 50) {
+    const page = await spotifyGet('me/playlists', { limit: Math.min(50, limit), offset }, userToken);
+    const items: SpotifyPlaylistSummary[] = (page?.items ?? []).filter(Boolean).map((playlist: any) => ({
+        id: playlist.id,
+        name: playlist.name || 'Untitled playlist',
+        owner: playlist.owner?.display_name || '',
+        image: playlist.images?.[0]?.url || null,
+        url: playlist.external_urls?.spotify || `https://open.spotify.com/playlist/${playlist.id}`,
+        total: playlist.tracks?.total ?? 0
+    }));
+    return { items, total: page?.total ?? items.length, hasMore: !!page?.next };
+}
+
+export async function getLikedSongsSummary(userToken: string): Promise<SpotifyPlaylistSummary> {
+    const page = await spotifyGet('me/tracks', { limit: 1, offset: 0 }, userToken);
+    return {
+        id: LIKED_SONGS_ID,
+        name: 'Liked Songs',
+        owner: '',
+        image: null,
+        url: 'https://open.spotify.com/collection/tracks',
+        total: page?.total ?? 0
+    };
+}
+
+export async function getLikedSongs(userToken: string): Promise<SpotifyPlaylist> {
+    const tracks: SpotifyTrack[] = [];
+    let offset = 0;
+    let fetched = 0;
+    let total = 0;
+    // /me/tracks caps out at 50 per page, unlike the 100 playlist tracks allow.
+    while (fetched < SPOTIFY_IMPORT_LIMIT) {
+        const page = await spotifyGet('me/tracks', { limit: Math.min(50, SPOTIFY_IMPORT_LIMIT - fetched), offset }, userToken);
+        const items: any[] = page?.items ?? [];
+        total = page?.total ?? total;
+        for (const item of items) {
+            const track = parseTrack(item);
+            if (track) tracks.push(track);
+        }
+        fetched += items.length;
+        offset += items.length;
+        if (!page?.next || items.length === 0) break;
+    }
+    return {
+        id: LIKED_SONGS_ID,
+        name: 'Liked Songs',
+        description: '',
+        owner: '',
+        image: null,
+        url: 'https://open.spotify.com/collection/tracks',
+        total: total || tracks.length,
+        truncated: (total || tracks.length) > fetched,
         tracks
     };
 }
