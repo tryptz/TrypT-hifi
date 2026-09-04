@@ -58,9 +58,14 @@ export async function sweepExpired(): Promise<void> {
     );
 }
 
+// See lib/file-proxy.ts: FILE_PROXY_SECRET is the real key here; the
+// QOBUZ_SECRET fallback is legacy and rotates out from under signed URLs.
 function getSecret(): string {
     const secret = process.env.FILE_PROXY_SECRET || process.env.QOBUZ_SECRET;
-    if (!secret) throw new Error('Deployment is missing FILE_PROXY_SECRET/QOBUZ_SECRET environment variable.');
+    if (!secret)
+        throw new Error(
+            'Deployment is missing FILE_PROXY_SECRET. Set it to any long random string — it signs Apple stream URLs and is unrelated to Qobuz credentials.'
+        );
     return secret;
 }
 

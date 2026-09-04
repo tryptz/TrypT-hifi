@@ -1,5 +1,6 @@
 import { getTokenForCountry, tokenCountriesMap } from '@/config/token-countries';
 import { APIOptionProps, QobuzArtist, QobuzSearchResults } from './qobuz-dl';
+import { makeProxyAgent, promoteSecret, refreshCredentials, resolveAppId, resolveCredentials } from './qobuz-credentials';
 import axios from 'axios';
 
 // Functions only to be used by servers
@@ -10,17 +11,15 @@ const QOBUZ_TRACK_URL_REGEX = /https:\/\/(play|open)\.qobuz\.com\/track\/\d+/;
 const QOBUZ_ARTIST_URL_REGEX = /https:\/\/(play|open)\.qobuz\.com\/artist\/\d+/;
 
 let crypto: any;
-let SocksProxyAgent: any;
 if (typeof window === 'undefined') {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     crypto = require('node:crypto');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    SocksProxyAgent = require('socks-proxy-agent').SocksProxyAgent;
 }
 
 export function testForRequirements() {
-    if (!process.env.QOBUZ_APP_ID || process.env.QOBUZ_APP_ID.length === 0) throw new Error('Deployment is missing QOBUZ_APP_ID environment variable.');
-    if (!process.env.QOBUZ_SECRET || process.env.QOBUZ_SECRET.length === 0) throw new Error('Deployment is missing QOBUZ_SECRET environment variable.');
+    // QOBUZ_APP_ID and QOBUZ_SECRET are deliberately NOT required: Qobuz rotates
+    // both, so they are resolved from the live web player at runtime when unset
+    // (see lib/qobuz-credentials.ts). Setting them still pins them.
     if (!process.env.QOBUZ_API_BASE || process.env.QOBUZ_API_BASE.length === 0) throw new Error('Deployment is missing QOBUZ_API_BASE environment variable.');
     
     if (!process.env.QOBUZ_AUTH_TOKENS || process.env.QOBUZ_AUTH_TOKENS.length === 0) throw new Error('Deployment is missing QOBUZ_AUTH_TOKENS environment variable.');
@@ -59,6 +58,7 @@ export async function search(query: string, limit: number = 10, offset: number =
     testForRequirements();
     const { country, ...requestOptions } = options || {};
     const token = country ? getTokenForCountry(country) : getRandomToken();
+    const appId = await resolveAppId();
 
     // Test if query is a Qobuz URL
     let id: string | null = null;
@@ -78,13 +78,10 @@ export async function search(query: string, limit: number = 10, offset: number =
     url.searchParams.append('query', id || query);
     url.searchParams.append('limit', limit.toString());
     url.searchParams.append('offset', offset.toString());
-    let proxyAgent = undefined;
-    if (process.env.SOCKS5_PROXY) {
-        proxyAgent = new SocksProxyAgent('socks5://' + process.env.SOCKS5_PROXY);
-    }
+    const proxyAgent = makeProxyAgent();
     const response = await axios.get(process.env.CORS_PROXY ? process.env.CORS_PROXY + encodeURIComponent(url.toString()) : url.toString(), {
         headers: {
-            'x-app-id': process.env.QOBUZ_APP_ID!,
+            'x-app-id': appId,
             'x-user-auth-token': token,
             'User-Agent': process.env.CORS_PROXY ? 'Qobuz-DL' : undefined
         },
@@ -102,17 +99,15 @@ export async function getArtist(artistId: string, options?: APIOptionProps): Pro
     testForRequirements();
     const { country, ...requestOptions } = options || {};
     const token = country ? getTokenForCountry(country) : getRandomToken();
+    const appId = await resolveAppId();
 
     const url = new URL(process.env.QOBUZ_API_BASE + '/artist/page');
-    let proxyAgent = undefined;
-    if (process.env.SOCKS5_PROXY) {
-        proxyAgent = new SocksProxyAgent('socks5://' + process.env.SOCKS5_PROXY);
-    }
+    const proxyAgent = makeProxyAgent();
     return (
         await axios.get(process.env.CORS_PROXY ? process.env.CORS_PROXY + encodeURIComponent(url.toString()) : url.toString(), {
             params: { artist_id: artistId, sort: 'release_date' },
             headers: {
-                'x-app-id': process.env.QOBUZ_APP_ID!,
+                'x-app-id': appId,
                 'x-user-auth-token': token,
                 'User-Agent': process.env.CORS_PROXY ? 'Qobuz-DL' : undefined
             },
@@ -134,6 +129,7 @@ export async function getArtistReleases(
     testForRequirements();
     const { country, ...requestOptions } = options || {};
     const token = country ? getTokenForCountry(country) : getRandomToken();
+    const appId = await resolveAppId();
 
     const url = new URL(process.env.QOBUZ_API_BASE + 'artist/getReleasesList');
     url.searchParams.append('artist_id', artist_id);
@@ -142,13 +138,10 @@ export async function getArtistReleases(
     url.searchParams.append('offset', offset.toString());
     url.searchParams.append('track_size', track_size.toString());
     url.searchParams.append('sort', 'release_date');
-    let proxyAgent = undefined;
-    if (process.env.SOCKS5_PROXY) {
-        proxyAgent = new SocksProxyAgent('socks5://' + process.env.SOCKS5_PROXY);
-    }
+    const proxyAgent = makeProxyAgent();
     const response = await axios.get(process.env.CORS_PROXY ? process.env.CORS_PROXY + encodeURIComponent(url.toString()) : url.toString(), {
         headers: {
-            'x-app-id': process.env.QOBUZ_APP_ID!,
+            'x-app-id': appId,
             'x-user-auth-token': token,
             'User-Agent': process.env.CORS_PROXY ? 'Qobuz-DL' : undefined
         },
@@ -163,17 +156,15 @@ export async function getAlbumInfo(album_id: string, options?: APIOptionProps) {
     testForRequirements();
     const { country, ...requestOptions } = options || {};
     const token = country ? getTokenForCountry(country) : getRandomToken();
+    const appId = await resolveAppId();
 
     const url = new URL(process.env.QOBUZ_API_BASE + 'album/get');
     url.searchParams.append('album_id', album_id);
     url.searchParams.append('extra', 'track_ids');
-    let proxyAgent = undefined;
-    if (process.env.SOCKS5_PROXY) {
-        proxyAgent = new SocksProxyAgent('socks5://' + process.env.SOCKS5_PROXY);
-    }
+    const proxyAgent = makeProxyAgent();
     const response = await axios.get(process.env.CORS_PROXY ? process.env.CORS_PROXY + encodeURIComponent(url.toString()) : url.toString(), {
         headers: {
-            'x-app-id': process.env.QOBUZ_APP_ID!,
+            'x-app-id': appId,
             'x-user-auth-token': token,
             'User-Agent': process.env.CORS_PROXY ? 'Qobuz-DL' : undefined
         },
@@ -184,13 +175,23 @@ export async function getAlbumInfo(album_id: string, options?: APIOptionProps) {
     return response.data;
 }
 
-export async function getDownloadURL(trackID: number, quality: string, options?: APIOptionProps) {
-    testForRequirements();
-    const { country, ...requestOptions } = options || {};
-    const token = country ? getTokenForCountry(country) : getRandomToken();
+// A rejected *signature* (or app id) means the credentials rotated and a fresh
+// bundle read is worth trying. A 401 does not: that is the user auth token, and
+// re-reading the bundle would not change it.
+function isCredentialRejection(error: any): boolean {
+    return error?.response?.status === 400;
+}
 
+async function requestFileUrl(
+    trackID: number,
+    quality: string,
+    appId: string,
+    secret: string,
+    token: string,
+    requestOptions: Record<string, unknown>
+): Promise<string | undefined> {
     const timestamp = Math.floor(new Date().getTime() / 1000);
-    const r_sig = `trackgetFileUrlformat_id${quality}intentstreamtrack_id${trackID}${timestamp}${process.env.QOBUZ_SECRET}`;
+    const r_sig = `trackgetFileUrlformat_id${quality}intentstreamtrack_id${trackID}${timestamp}${secret}`;
     const r_sig_hashed = crypto.createHash('md5').update(r_sig).digest('hex');
     const url = new URL(process.env.QOBUZ_API_BASE + 'track/getFileUrl');
     url.searchParams.append('format_id', quality);
@@ -198,13 +199,10 @@ export async function getDownloadURL(trackID: number, quality: string, options?:
     url.searchParams.append('track_id', trackID.toString());
     url.searchParams.append('request_ts', timestamp.toString());
     url.searchParams.append('request_sig', r_sig_hashed);
-    let proxyAgent = undefined;
-    if (process.env.SOCKS5_PROXY) {
-        proxyAgent = new SocksProxyAgent('socks5://' + process.env.SOCKS5_PROXY);
-    }
+    const proxyAgent = makeProxyAgent();
     const response = await axios.get(process.env.CORS_PROXY ? process.env.CORS_PROXY + encodeURIComponent(url.toString()) : url.toString(), {
         headers: {
-            'x-app-id': process.env.QOBUZ_APP_ID!,
+            'x-app-id': appId,
             'x-user-auth-token': token,
             'User-Agent': process.env.CORS_PROXY ? 'Qobuz-DL' : undefined
         },
@@ -212,5 +210,43 @@ export async function getDownloadURL(trackID: number, quality: string, options?:
         httpsAgent: proxyAgent,
         ...requestOptions
     });
-    return response.data.url;
+    return response.data?.url;
+}
+
+export async function getDownloadURL(trackID: number, quality: string, options?: APIOptionProps) {
+    testForRequirements();
+    const { country, ...requestOptions } = options || {};
+    const token = country ? getTokenForCountry(country) : getRandomToken();
+
+    // Qobuz publishes several signing secrets and keeps only some of them live,
+    // so walk the candidates. Pass 1 uses whatever is pinned/cached; if every
+    // candidate is rejected, pass 2 re-reads the live bundle — that second pass
+    // is what heals a rotation without anyone editing an environment variable.
+    let credentials = await resolveCredentials();
+    let lastRejection: any;
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+        for (const secret of credentials.secrets) {
+            try {
+                const fileUrl = await requestFileUrl(trackID, quality, credentials.appId, secret, token, requestOptions);
+                if (fileUrl) {
+                    promoteSecret(secret);
+                    return fileUrl;
+                }
+                // Signed fine but Qobuz returned no url: the track is not
+                // streamable at this quality (region, tier, or sample-only).
+                throw new Error(`Qobuz returned no download url for track ${trackID} at quality ${quality}.`);
+            } catch (error: any) {
+                if (!isCredentialRejection(error)) throw error;
+                lastRejection = error;
+            }
+        }
+        if (attempt === 0) credentials = await refreshCredentials();
+    }
+
+    const detail = lastRejection?.response?.data?.message || lastRejection?.message || 'unknown error';
+    throw new Error(
+        `Qobuz rejected the request signature for track ${trackID} with every known app id/secret (last error: ${detail}). ` +
+            'The credentials in the web-player bundle may have changed shape — check lib/qobuz-credentials.ts.'
+    );
 }

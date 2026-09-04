@@ -88,7 +88,14 @@ docker-compose up -d
 
 ### Setup .env (IMPORTANT)
 
-Before you can use Qobuz-DL, you need to change the .env file in the root directory. The default configuration will NOT work. QOBUZ_APP_ID and QOBUZ_SECRET must be set to the correct values. To find these you can use [this tool](https://github.com/QobuzDL/Qobuz-AppID-Secret-Tool).
+Before you can use Qobuz-DL, you need to change the .env file in the root directory. The default configuration will NOT work.
+
+`QOBUZ_APP_ID` and `QOBUZ_SECRET` are **optional**. Qobuz ships both inside its web-player bundle and rotates them whenever it cuts a new release, so the app resolves them at runtime and re-reads them whenever a signed request is rejected (see `lib/qobuz-credentials.ts`). Leave them blank unless you want to pin known-good values — a stale pin still recovers on its own. If you do want to look them up by hand, you can use [this tool](https://github.com/QobuzDL/Qobuz-AppID-Secret-Tool).
+
+> **Why a stale secret looks like a partial outage:** only `track/getFileUrl` signs its request with the secret. Search, album and artist lookups authenticate with the app id and the user token alone. So when the secret rotates, browsing keeps working and **streaming and downloading stop** — the app looks healthy right up until you press download.
+
+`FILE_PROXY_SECRET` should be set to any long random string (`openssl rand -hex 32`) and kept stable — it signs the `/api/file` and Apple stream URLs. It falls back to `QOBUZ_SECRET` only for backwards compatibility; don't rely on that, since `QOBUZ_SECRET` is optional now and rotates.
+
 Additionally, in order to download files longer than 30 seconds, a valid Qobuz token is needed. This can be found in the localuser.token key of localstorage on the [official Qobuz website](https://play.qobuz.com/) for any paying members.
 
 ### Discord bot integration (optional)

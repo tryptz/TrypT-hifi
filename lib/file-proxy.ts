@@ -6,9 +6,17 @@ import { NextRequest } from 'next/server';
 
 const DEFAULT_TTL_SECONDS = 15 * 60;
 
+// Prefer FILE_PROXY_SECRET. The QOBUZ_SECRET fallback is legacy and a poor
+// signing key: it is a *Qobuz-owned* value that rotates, and every rotation
+// silently invalidates links already handed out. It is also no longer required
+// for the Qobuz API itself (see lib/qobuz-credentials.ts), so a deployment that
+// drops it must set FILE_PROXY_SECRET or file delivery stops here.
 function getSecret(): string {
     const secret = process.env.FILE_PROXY_SECRET || process.env.QOBUZ_SECRET;
-    if (!secret) throw new Error('Deployment is missing FILE_PROXY_SECRET/QOBUZ_SECRET environment variable.');
+    if (!secret)
+        throw new Error(
+            'Deployment is missing FILE_PROXY_SECRET. Set it to any long random string — it signs /api/file URLs and is unrelated to Qobuz credentials.'
+        );
     return secret;
 }
 
