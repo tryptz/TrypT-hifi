@@ -3,10 +3,6 @@ import DiscordBotButton from '@/components/discord-bot-button';
 import ParticlesComponent from '@/components/particles';
 import SettingsForm from '@/components/ui/settings-form';
 import StatusBarContainer from '@/components/status-bar/container';
-import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { FaDiscord } from '@react-icons/all-files/fa/FaDiscord';
-import { FaGithub } from '@react-icons/all-files/fa/FaGithub';
 import { FFmpegProvider } from '@/lib/ffmpeg-provider';
 import { Inter } from 'next/font/google';
 import type { Metadata } from 'next';
@@ -17,6 +13,8 @@ import { Toaster } from '@/components/ui/toaster';
 import { CountryProvider } from '@/lib/country-provider';
 import { SourceProvider } from '@/lib/source-provider';
 import { AppleHandoffProvider } from '@/lib/apple-handoff-provider';
+import { PlayerProvider } from '@/lib/player-provider';
+import MiniPlayer from '@/components/mini-player';
 import './globals.css';
 
 const inter = Inter({
@@ -64,6 +62,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                             <SettingsProvider>
                                 <ThemeProvider attribute='class' defaultTheme='dark' enableSystem>
                                     <AppleHandoffProvider>
+                                    <PlayerProvider>
                                     <ParticlesComponent className='z-[-1] h-full w-full fixed' />
                                     <div className='fixed justify-between items-start flex w-full max-w-screen p-4 z-[10]'>
                                         <div className='flex flex-col gap-2'>
@@ -71,31 +70,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                                             <ChangelogDialog />
                                         </div>
                                         <div className='flex gap-2 items-center'>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button variant='outline' size='icon'>
-                                                        <FaDiscord />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent>
-                                                    <DropdownMenuItem>
-                                                        <a href='https://discord.gg/rhUUKQagjA' target='_blank' rel='noopener noreferrer'>
-                                                            Qobuz-DL Discord
-                                                        </a>
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem>
-                                                        <a href='https://discord.gg/invite/GN7GnntyQ2' target='_blank' rel='noopener noreferrer'>
-                                                            Squidboard Discord
-                                                        </a>
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
                                             <DiscordBotButton />
-                                            <a href='https://github.com/QobuzDL/Qobuz-DL' target='_blank' rel='noopener noreferrer'>
-                                                <Button variant='outline' size='icon'>
-                                                    <FaGithub />
-                                                </Button>
-                                            </a>
                                         </div>
                                     </div>
                                     <div className='flex flex-col min-h-screen'>
@@ -104,7 +79,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                                         </main>
                                         <Toaster />
                                         <StatusBarContainer />
+                                        <MiniPlayer />
                     </div>
+                                    </PlayerProvider>
                                     </AppleHandoffProvider>
                 </ThemeProvider>
             </SettingsProvider>

@@ -2,7 +2,7 @@ import ArtistDialog from './artist-dialog';
 import DownloadAlbumButton from './download-album-button';
 import Image from 'next/image';
 import React, { useEffect, useState } from 'react';
-import { AlignJustifyIcon, DotIcon, DownloadIcon, UsersIcon, DiscAlbumIcon } from 'lucide-react';
+import { AlignJustifyIcon, DotIcon, DownloadIcon, UsersIcon, DiscAlbumIcon, Loader2Icon, PlayIcon } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
 import { createDownloadJob } from '@/lib/download-job';
@@ -34,6 +34,7 @@ import { useSettings } from '@/lib/settings-provider';
 import { useStatusBar } from '@/lib/status-bar/context';
 import { useToast } from '@/hooks/use-toast';
 import { useCountry } from '@/lib/country-provider';
+import { usePlayer } from '@/lib/player-provider';
 
 const ReleaseCard = ({
     result,
@@ -72,6 +73,26 @@ const ReleaseCard = ({
 
     const [openArtistDialog, setOpenArtistDialog] = useState(false);
     const { country } = useCountry();
+    const { playTracks, playAlbum } = usePlayer();
+    const [startingPlayback, setStartingPlayback] = useState(false);
+
+    // Streaming is Qobuz-only: Apple audio is DRM-encrypted and handed off to the native app instead.
+    const canStream = source === 'qobuz' && getType(result) !== 'artists' && (result as QobuzAlbum | QobuzTrack).streamable !== false;
+
+    const playResult = async () => {
+        if ((result as QobuzTrack).album) {
+            playTracks([result as QobuzTrack]);
+            return;
+        }
+        setStartingPlayback(true);
+        try {
+            await playAlbum(result as QobuzAlbum);
+        } catch {
+            toast({ title: 'Playback failed', description: `Couldn't load '${formatTitle(result)}' for streaming.` });
+        } finally {
+            setStartingPlayback(false);
+        }
+    };
 
     return (
         <div className='space-y-2' title={formatTitle(result)} ref={ref || undefined}>
@@ -179,6 +200,11 @@ const ReleaseCard = ({
                                         source={source}
                                         showHandoff={showHandoff}
                                     />
+                                )}
+                                {canStream && (
+                                    <Button size='icon' variant='ghost' title={`Play '${formatTitle(result)}'`} onClick={playResult} disabled={startingPlayback}>
+                                        {startingPlayback ? <Loader2Icon className='animate-spin' /> : <PlayIcon />}
+                                    </Button>
                                 )}
                                 {(result as QobuzTrack).album ? null : (
                                     <Button
@@ -372,6 +398,17 @@ const ReleaseCard = ({
                                                         )}
                                                         <p className='truncate font-medium'>{formatTitle(track)}</p>
                                                     </div>
+                                                    {track.streamable && source === 'qobuz' && (
+                                                        <Button
+                                                            title={`Play '${formatTitle(track)}'`}
+                                                            className='md:group-hover:flex md:hidden justify-center aspect-square h-6 w-6 [&_svg]:size-5 hover:bg-transparent ml-auto'
+                                                            size='icon'
+                                                            variant='ghost'
+                                                            onClick={() => playTracks(fetchedAlbumData.tracks.items, index)}
+                                                        >
+                                                            <PlayIcon className='!size-4' />
+                                                        </Button>
+                                                    )}
                                                     {track.streamable && (
                                                         <Button
                                                             title={`Download '${formatTitle(track)}'`}
