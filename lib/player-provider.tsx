@@ -4,6 +4,7 @@ import React, { createContext, ReactNode, useCallback, useContext, useEffect, us
 import { formatArtists, formatTitle, getAlbum, QobuzAlbum, QobuzTrack } from './qobuz-dl';
 import { useCountry } from './country-provider';
 import { isDeezerItem } from './deezer';
+import { isTidalItem } from './tidal';
 
 // ---------------------------------------------------------------------------
 // In-browser streaming for Qobuz search results. A single <audio> element lives
@@ -17,7 +18,9 @@ import { isDeezerItem } from './deezer';
 // in every modern browser and is a fraction of the size of hi-res; MP3 320 is
 // the fallback for browsers that refuse FLAC.
 // Deezer tracks resolve through /api/deezer/preview instead, which returns the
-// same signed-link shape for the track's 30-second MP3 preview.
+// same signed-link shape for the track's 30-second MP3 preview. TIDAL tracks use
+// /api/tidal/download-music, which takes the same quality ids (MP3 320 maps to
+// TIDAL's AAC 320 there, which every browser can decode).
 const STREAM_QUALITY = '6';
 const FALLBACK_QUALITY = '5';
 
@@ -80,7 +83,7 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             try {
                 const response = isDeezerItem(track)
                     ? await axios.get('/api/deezer/preview', { params: { track_id: track.id } })
-                    : await axios.get('/api/download-music', {
+                    : await axios.get(isTidalItem(track) ? '/api/tidal/download-music' : '/api/download-music', {
                           params: { track_id: track.id, quality },
                           headers: country ? { 'Token-Country': country } : {}
                       });
@@ -116,7 +119,7 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     const playAlbum = useCallback(
         async (album: QobuzAlbum, startIndex = 0) => {
-            const albumRoute = isDeezerItem(album) ? '/api/deezer/get-album' : '/api/get-album';
+            const albumRoute = isDeezerItem(album) ? '/api/deezer/get-album' : isTidalItem(album) ? '/api/tidal/get-album' : '/api/get-album';
             const response = await axios.get(albumRoute, { params: { album_id: album.id }, headers: country ? { 'Token-Country': country } : {} });
             const tracks: QobuzTrack[] = response.data.data.tracks.items.map((track: QobuzTrack) => ({ ...track, album }));
             playTracks(tracks, startIndex);

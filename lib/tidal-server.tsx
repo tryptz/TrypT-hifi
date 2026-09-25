@@ -1,0 +1,244 @@
+import axios from 'axios';
+import {
+    TidalAlbum,
+    TidalArtist,
+    TidalPage,
+    TidalTrack,
+    matchTidalUrl,
+    normalizeTidalAlbum,
+    normalizeTidalAlbumFull,
+    normalizeTidalSearch,
+    parseTidalArtistData,
+    tidalReleaseBucket
+} from './tidal';
+import { APIOptionProps, FetchedQobuzAlbum, QobuzArtistResults, QobuzSearchResults } from './qobuz-dl';
+
+// ---------------------------------------------------------------------------
+// Server-only TIDAL client, backed by a HiFi API instance.
+//
+// Counterpart to lib/deezer-server.tsx. Do NOT import this into the client.
+//
+//   - TIDAL_API_BASE is one or more HiFi API instance URLs (comma-separated),
+//     the same server Tryptify's "Tidal HiFi URL" setting points at. Requests
+//     start on a random instance and fail over on 429 / 5xx / HTML responses.
+//   - Instances wrap payloads as { version, data }; unwrap() strips that so the
+//     normalizers see the bare TIDAL resource either way.
+//   - Stream manifests are decoded here so the routes can hand the browser a
+//     signed /api/file link, exactly like the Qobuz download route.
+// ---------------------------------------------------------------------------
+
+let SocksProxyAgent: any;
+if (typeof window === 'undefined') {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    SocksProxyAgent = require('socks-proxy-agent').SocksProxyAgent;
+}
+
+// Upper bound on album tracklists / discographies we page through.
+const MAX_ITEMS = 500;
+const PAGE_SIZE = 100;
+
+// Qobuz quality ids (what the settings + download pipeline speak) -> TIDAL qualities.
+// HI_RES_LOSSLESS may come back as a DASH manifest, which can't be proxied as one
+// file, so getStreamURL() retries it as LOSSLESS (16/44.1 FLAC).
+const QUALITY_MAP: Record<string, string> = {
+    '27': 'HI_RES_LOSSLESS',
+    '7': 'HI_RES_LOSSLESS',
+    '6': 'LOSSLESS',
+    '5': 'HIGH'
+};
+
+function instances(): string[] {
+    const list = (process.env.TIDAL_API_BASE || '')
+        .split(',')
+        .map((url) => url.trim().replace(/\/$/, ''))
+        .filter(Boolean);
+    if (list.length === 0) throw new Error('Deployment is missing the TIDAL_API_BASE environment variable (HiFi API instance URL).');
+    return list;
+}
+
+function proxyAgent() {
+    if (process.env.SOCKS5_PROXY) return new SocksProxyAgent('socks5://' + process.env.SOCKS5_PROXY);
+    return undefined;
+}
+
+export async function tidalRequest<T = any>(path: string, params: Record<string, string | number | undefined> = {}, options: APIOptionProps = {}): Promise<T> {
+    const { country, ...requestOptions } = options;
+    void country; // the instance's own TIDAL session decides the region
+    const bases = instances();
+    const agent = proxyAgent();
+    const start = Math.floor(Math.random() * bases.length);
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < bases.length; attempt++) {
+        const url = new URL(bases[(start + attempt) % bases.length] + path);
+        for (const [key, value] of Object.entries(params)) {
+            if (value !== undefined && value !== null) url.searchParams.append(key, String(value));
+        }
+        try {
+            const response = await axios.get(url.toString(), {
+                httpAgent: agent,
+                httpsAgent: agent,
+                // Keep the body as text so an HTML error page can be told apart from JSON.
+                responseType: 'text',
+                transformResponse: (data) => data,
+                ...requestOptions
+            });
+            const body = String(response.data).trimStart();
+            // A misconfigured URL (e.g. a SPA root) answers every path with index.html.
+            if (body.startsWith('<')) throw new Error(`TIDAL instance ${url.origin} returned HTML instead of JSON`);
+            return JSON.parse(body) as T;
+        } catch (error: any) {
+            lastError = error;
+            const status = error?.response?.status;
+            // 4xx other than 401/429 means the request itself is bad (e.g. unknown id): don't retry it elsewhere.
+            if (status && status < 500 && status !== 401 && status !== 429) break;
+        }
+    }
+    const status = (lastError as any)?.response?.status;
+    throw new Error(`TIDAL: ${status ? `HTTP ${status}` : (lastError as Error)?.message || 'all instances failed'} for ${path}`);
+}
+
+// --- Response unwrapping ---------------------------------------------------
+
+// Instances answer { version, data: X }; older ones answer X directly.
+const unwrap = (body: any) => (body && typeof body === 'object' && 'data' in body ? body.data : body);
+
+// Search answers either a bare page, or { albums: page, tracks: page, ... } when
+// the instance runs a multi-type TIDAL search.
+function pageOf<T>(body: any, key: 'albums' | 'tracks' | 'artists'): TidalPage<T> {
+    const data = unwrap(body);
+    const page = Array.isArray(data?.items) ? data : data?.[key];
+    return { items: page?.items || [], totalNumberOfItems: page?.totalNumberOfItems, limit: page?.limit, offset: page?.offset };
+}
+
+// Album tracklists are { item: track, type } wrappers on some instances and bare tracks on others.
+const albumTrackItems = (data: any): TidalTrack[] =>
+    ((data?.tracks?.items ?? data?.items ?? []) as any[]).map((entry) => entry?.item ?? entry).filter((t) => t && t.id);
+
+// --- Low-level fetches -----------------------------------------------------
+
+const fetchTrack = async (id: string, options: APIOptionProps) => unwrap(await tidalRequest('/info/', { id }, options)) as TidalTrack;
+
+const fetchArtist = async (id: string, options: APIOptionProps): Promise<TidalArtist> => {
+    const body = await tidalRequest('/artist/', { id }, options);
+    return (body?.artist ?? unwrap(body)?.artist ?? unwrap(body)) as TidalArtist;
+};
+
+async function fetchAlbumWithTracks(id: string, options: APIOptionProps): Promise<{ album: TidalAlbum; tracks: TidalTrack[] }> {
+    const first = unwrap(await tidalRequest('/album/', { id }, options));
+    const album = (first?.album ?? first) as TidalAlbum;
+    const tracks = albumTrackItems(first);
+    const total = Math.min(first?.tracks?.totalNumberOfItems ?? album.numberOfTracks ?? tracks.length, MAX_ITEMS);
+    while (tracks.length < total) {
+        const page = albumTrackItems(unwrap(await tidalRequest('/album/', { id, offset: tracks.length, limit: PAGE_SIZE }, options)));
+        if (page.length === 0) break;
+        tracks.push(...page);
+    }
+    return { album, tracks };
+}
+
+// /artist/?f= returns the whole discography (albums, EPs and singles) plus top tracks.
+async function fetchArtistContent(id: string, options: APIOptionProps): Promise<{ albums: TidalAlbum[]; topTracks: TidalTrack[] }> {
+    const body = await tidalRequest('/artist/', { f: id }, options);
+    const data = body?.albums || body?.tracks ? body : unwrap(body);
+    const albums: TidalAlbum[] = data?.albums?.items ?? (Array.isArray(data?.items) ? data.items : []);
+    const rawTracks = data?.topTracks?.items ?? data?.tracks?.items ?? data?.tracks;
+    const topTracks: TidalTrack[] = Array.isArray(rawTracks) ? rawTracks : [];
+    return { albums: albums.slice(0, MAX_ITEMS), topTracks: topTracks.slice(0, 10) };
+}
+
+// --- Public API (mirrors qobuz-dl-server signatures) -----------------------
+
+export async function search(query: string, limit: number = 10, offset: number = 0, options: APIOptionProps = {}): Promise<QobuzSearchResults> {
+    const empty = { items: [], totalNumberOfItems: 0 };
+
+    // Pasted tidal.com URLs resolve to a single targeted result.
+    const urlMatch = matchTidalUrl(query);
+    if (urlMatch) {
+        if (urlMatch.kind === 'albums') {
+            const { album } = await fetchAlbumWithTracks(urlMatch.id, options);
+            return normalizeTidalSearch(query, limit, offset, { items: [album], totalNumberOfItems: 1 }, empty, empty, 'albums');
+        }
+        if (urlMatch.kind === 'artists')
+            return normalizeTidalSearch(
+                query,
+                limit,
+                offset,
+                empty,
+                empty,
+                { items: [await fetchArtist(urlMatch.id, options)], totalNumberOfItems: 1 },
+                'artists'
+            );
+        return normalizeTidalSearch(query, limit, offset, empty, { items: [await fetchTrack(urlMatch.id, options)], totalNumberOfItems: 1 }, empty, 'tracks');
+    }
+
+    // The HiFi API searches one type per query key (al / s / a), so fan out and merge.
+    const page = { limit, offset };
+    const [albums, tracks, artists] = await Promise.all([
+        tidalRequest('/search/', { al: query, ...page }, options),
+        tidalRequest('/search/', { s: query, ...page }, options),
+        tidalRequest('/search/', { a: query, ...page }, options)
+    ]);
+    return normalizeTidalSearch(
+        query,
+        limit,
+        offset,
+        pageOf<TidalAlbum>(albums, 'albums'),
+        pageOf<TidalTrack>(tracks, 'tracks'),
+        pageOf<TidalArtist>(artists, 'artists')
+    );
+}
+
+export async function getAlbumInfo(album_id: string, options: APIOptionProps = {}): Promise<FetchedQobuzAlbum> {
+    const { album, tracks } = await fetchAlbumWithTracks(album_id, options);
+    return normalizeTidalAlbumFull(album, tracks);
+}
+
+// Returns the already-parsed inner `artist` object, like the Deezer client, so the
+// route can wrap it as { data: { artist } }. The whole discography is fetched up
+// front (bucketed by album type), so every bucket reports has_more: false.
+export async function getArtist(artist_id: string, options: APIOptionProps = {}): Promise<QobuzArtistResults['artist']> {
+    const [artist, { albums, topTracks }] = await Promise.all([fetchArtist(artist_id, options), fetchArtistContent(artist_id, options)]);
+    return parseTidalArtistData(artist, topTracks, albums).artist;
+}
+
+export async function getArtistReleases(
+    artist_id: string,
+    release_type: string = 'album',
+    limit: number = 10,
+    offset: number = 0,
+    options: APIOptionProps = {}
+) {
+    const [artist, { albums }] = await Promise.all([fetchArtist(artist_id, options), fetchArtistContent(artist_id, options)]);
+    const matching = albums.filter((album) => tidalReleaseBucket(album.type) === release_type);
+    return {
+        items: matching.slice(offset, offset + limit).map((album) => normalizeTidalAlbum(album, artist)),
+        has_more: offset + limit < matching.length
+    };
+}
+
+// --- Streams ---------------------------------------------------------------
+
+// A manifest is base64 of either BTS JSON ({ mimeType, encryptionType, urls }) or
+// a DASH MPD. Only unencrypted single-file (BTS) manifests can be proxied.
+function directURLFromManifest(manifest: string | undefined, mimeType: string | undefined): string | null {
+    if (!manifest) return null;
+    const decoded = Buffer.from(manifest, 'base64').toString('utf8');
+    if (mimeType === 'application/dash+xml' || decoded.includes('<MPD')) return null;
+    try {
+        const json = JSON.parse(decoded) as { urls?: string[]; encryptionType?: string };
+        if (json.encryptionType && json.encryptionType !== 'NONE') return null;
+        return json.urls?.[0] || null;
+    } catch {
+        return decoded.match(/https?:\/\/\S+/)?.[0] || null;
+    }
+}
+
+// Stream links are short-lived signed CDN URLs, so always fetch a fresh one.
+export async function getStreamURL(track_id: string, quality: string, options: APIOptionProps = {}): Promise<string | null> {
+    const tidalQuality = QUALITY_MAP[quality] || 'LOSSLESS';
+    const data = unwrap(await tidalRequest('/track/', { id: track_id, quality: tidalQuality }, options));
+    const url = directURLFromManifest(data?.manifest, data?.manifestMimeType);
+    if (url || tidalQuality !== 'HI_RES_LOSSLESS') return url;
+    return getStreamURL(track_id, '6', options);
+}

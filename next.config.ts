@@ -17,6 +17,13 @@ const nextConfig: NextConfig = {
                 port: '',
                 pathname: '**',
                 search: ''
+            },
+            {
+                protocol: 'https',
+                hostname: 'resources.tidal.com',
+                port: '',
+                pathname: '**',
+                search: ''
             }
         ]
     },

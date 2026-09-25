@@ -186,7 +186,10 @@ export function formatTitle(input: QobuzAlbum | QobuzTrack | QobuzArtist) {
 }
 
 export function getFullResImageUrl(input: QobuzAlbum | QobuzTrack) {
-    return getAlbum(input).image.large.substring(0, getAlbum(input).image.large.length - 7) + 'org.jpg';
+    const large = getAlbum(input).image.large;
+    // Only Qobuz covers follow the "_600.jpg" -> "_org.jpg" naming; other sources already hand over their largest size.
+    if (!large.includes('static.qobuz.com')) return large;
+    return large.substring(0, large.length - 7) + 'org.jpg';
 }
 
 export function formatArtists(input: QobuzAlbum | QobuzTrack, separator: string = ', ') {

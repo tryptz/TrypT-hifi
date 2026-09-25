@@ -10,6 +10,11 @@ import { SettingsProps } from './settings-provider';
 import { StatusBarProps } from '@/components/status-bar/status-bar';
 import { ToastAction } from '@/components/ui/toast';
 import { zipSync } from 'fflate';
+import { isTidalItem } from './tidal';
+
+// TIDAL releases download through /api/tidal/*, which mirrors the Qobuz routes
+// (same quality ids, same signed-link response), so only the base path differs.
+const apiBaseFor = (item: QobuzAlbum | QobuzTrack) => (isTidalItem(item) ? '/api/tidal' : '/api');
 
 export const createDownloadJob = async (
     result: QobuzAlbum | QobuzTrack,
@@ -45,7 +50,7 @@ export const createDownloadJob = async (
                     )
                         await loadFFmpeg(ffmpegState);
                     setStatusBar((prev) => ({ ...prev, description: 'Fetching track size...' }));
-                    const APIResponse = await axios.get('/api/download-music', {
+                    const APIResponse = await axios.get(`${apiBaseFor(result)}/download-music`, {
                         headers: {
                             'Token-Country': country
                         },
@@ -87,7 +92,7 @@ export const createDownloadJob = async (
                         } else {
                             toast({
                                 title: 'Error',
-                                description: `Qobuz provided a file shorter than expected for "${title}". This can indicate the file being a sample track rather than the full track`,
+                                description: `${isTidalItem(result) ? 'TIDAL' : 'Qobuz'} provided a file shorter than expected for "${title}". This can indicate the file being a sample track rather than the full track`,
                                 duration: Infinity,
                                 action: (
                                     <ToastAction
@@ -147,7 +152,7 @@ export const createDownloadJob = async (
                         await loadFFmpeg(ffmpegState);
                     setStatusBar((prev) => ({ ...prev, description: 'Fetching album data...' }));
                     if (!fetchedAlbumData) {
-                        const albumDataResponse = await axios.get('/api/get-album', {
+                        const albumDataResponse = await axios.get(`${apiBaseFor(result)}/get-album`, {
                             params: { album_id: (result as QobuzAlbum).id },
                             headers: { 'Token-Country': country },
                             signal
@@ -169,7 +174,7 @@ export const createDownloadJob = async (
                     for (let index = 0; index < albumTracks.length; index++) {
                         const track = albumTracks[index];
                         if (track.streamable) {
-                            const fileURLResponse = await axios.get('/api/download-music', {
+                            const fileURLResponse = await axios.get(`${apiBaseFor(track)}/download-music`, {
                                 params: { track_id: track.id, quality: settings.outputQuality },
                                 headers: { 'Token-Country': country },
                                 signal

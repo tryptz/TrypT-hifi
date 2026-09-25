@@ -1,18 +1,18 @@
 'use client';
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 
-export type MusicSource = 'qobuz' | 'apple' | 'deezer';
+export type MusicSource = 'qobuz' | 'apple' | 'deezer' | 'tidal';
 
-export const MUSIC_SOURCES: MusicSource[] = ['qobuz', 'apple', 'deezer'];
+export const MUSIC_SOURCES: MusicSource[] = ['qobuz', 'apple', 'deezer', 'tidal'];
 
-export const sourceLabels: Record<MusicSource, string> = { qobuz: 'Qobuz', apple: 'Apple Music', deezer: 'Deezer' };
+export const sourceLabels: Record<MusicSource, string> = { qobuz: 'Qobuz', apple: 'Apple Music', deezer: 'Deezer', tidal: 'TIDAL' };
 
 // Base path for the API routes of a given source. Qobuz lives at /api/*, Apple
-// at /api/apple/* and Deezer at /api/deezer/* (one-for-one mirrors). Every
+// at /api/apple/*, Deezer at /api/deezer/* and TIDAL at /api/tidal/* (one-for-one mirrors). Every
 // source-aware fetch composes this with the route name, e.g. `${sourceApiBase(source)}/get-music`.
 export const sourceApiBase = (source: MusicSource): string => (source === 'qobuz' ? '/api' : `/api/${source}`);
 
-// Apple and Deezer routes return artist/release data already normalized server-side;
+// Apple, Deezer and TIDAL routes return artist/release data already normalized server-side;
 // only raw Qobuz responses still need parseArtistData / parseArtistAlbumData on the client.
 export const isPreParsedSource = (source: MusicSource): boolean => source !== 'qobuz';
 

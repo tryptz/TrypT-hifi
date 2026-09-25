@@ -9,6 +9,7 @@ import { createDownloadJob } from '@/lib/download-job';
 import { createAppleDownloadJob } from '@/lib/apple-download-job';
 import { getFullAppleAlbumInfo } from '@/lib/apple-music';
 import { DeezerExtras, getFullDeezerAlbumInfo } from '@/lib/deezer';
+import { getFullTidalAlbumInfo } from '@/lib/tidal';
 import { useSource } from '@/lib/source-provider';
 import { useAppleHandoff } from '@/lib/apple-handoff-provider';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
@@ -77,9 +78,9 @@ const ReleaseCard = ({
     const { playTracks, playAlbum } = usePlayer();
     const [startingPlayback, setStartingPlayback] = useState(false);
 
-    // Qobuz streams full tracks and Deezer plays 30-second previews. Apple audio is
-    // DRM-encrypted and handed off to the native app instead.
-    const sourceCanStream = source === 'qobuz' || source === 'deezer';
+    // Qobuz and TIDAL stream full tracks and Deezer plays 30-second previews. Apple
+    // audio is DRM-encrypted and handed off to the native app instead.
+    const sourceCanStream = source === 'qobuz' || source === 'deezer' || source === 'tidal';
     const canStream = sourceCanStream && getType(result) !== 'artists' && (result as QobuzAlbum | QobuzTrack).streamable !== false;
     // Deezer has no downloads; its cards link out to the release on deezer.com instead.
     const deezerLink = (result as { deezer?: DeezerExtras }).deezer?.link;
@@ -228,6 +229,7 @@ const ReleaseCard = ({
                                             if (source === 'apple')
                                                 await getFullAppleAlbumInfo(fetchedAlbumData, setFetchedAlbumData, result as QobuzAlbum, country);
                                             else if (source === 'deezer') await getFullDeezerAlbumInfo(fetchedAlbumData, setFetchedAlbumData, result as QobuzAlbum);
+                                            else if (source === 'tidal') await getFullTidalAlbumInfo(fetchedAlbumData, setFetchedAlbumData, result as QobuzAlbum);
                                             else await getFullAlbumInfo(fetchedAlbumData, setFetchedAlbumData, result as QobuzAlbum, country);
                                         }}
                                     >
