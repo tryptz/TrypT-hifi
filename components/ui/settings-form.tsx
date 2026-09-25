@@ -236,6 +236,21 @@ const SettingsForm = () => {
                                 </p>
                             </div>
                         )}
+                        {source === 'tidal' && (
+                            <div className='flex items-center gap-2'>
+                                <div className='flex flex-col'>
+                                    <p className='font-medium text-sm'>Prefer Dolby Atmos</p>
+                                    <p className='text-xs text-muted-foreground'>
+                                        TIDAL tracks with an Atmos mix download as the original E-AC-3 JOC .m4a, untouched: no re-encode and no tags, so
+                                        the Atmos data survives. Tracks without one use the settings above.
+                                    </p>
+                                </div>
+                                <Checkbox
+                                    checked={settings.tidalAtmos}
+                                    onCheckedChange={(checked: boolean) => setSettings((settings) => ({ ...settings, tidalAtmos: checked }))}
+                                />
+                            </div>
+                        )}
                         {losslessCodecs.includes(settings.outputCodec) ? (
                             <div className='space-y-2'>
                                 <p className='font-medium text-sm'>Max Download Quality</p>

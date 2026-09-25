@@ -121,6 +121,8 @@ TIDAL_API_BASE=https://your-hifi-instance.example.com
 
 With it set you can search TIDAL (or paste `tidal.com` album/track/artist links), stream full tracks in the browser, and download tracks and albums through the regular download pipeline. The quality setting maps to TIDAL qualities: Hi-Res → `HI_RES_LOSSLESS` (falls back to 16-bit `LOSSLESS` when the instance only offers a DASH stream), CD → `LOSSLESS`, MP3 320 → `HIGH` (AAC 320).
 
+**Dolby Atmos:** releases with an Atmos mix get an `ATMOS` badge. Turn on *Prefer Dolby Atmos* in settings (shown while TIDAL is the active source) to download those tracks as the original E-AC-3 JOC `.m4a`, fetched through the instance's `/trackManifests/` endpoint and assembled from its DASH segments server-side. Atmos files are passed through byte-for-byte (no re-encode, no tags) so players still see them as Atmos; tracks without an Atmos mix, or whose Atmos stream TIDAL serves DRM-protected, fall back to the stereo quality. In-browser playback stays stereo, since most browsers can't decode E-AC-3.
+
 ### Discord bot integration (optional)
 
 An "Add Bot" button can be shown in the header to let users invite your Discord bot to their server. It only renders when configured, using either of the following:

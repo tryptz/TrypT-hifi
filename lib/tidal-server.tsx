@@ -61,6 +61,25 @@ function proxyAgent() {
     return undefined;
 }
 
+// How long to wait on an instance's playback queue before giving up on it.
+const PLAYBACK_QUEUE_TIMEOUT_S = 60;
+
+async function getJSON(url: string, agent: unknown, requestOptions: object): Promise<{ status: number; body: any; retryAfter: number }> {
+    const response = await axios.get(url, {
+        httpAgent: agent,
+        httpsAgent: agent,
+        // Keep the body as text so an HTML error page can be told apart from JSON.
+        responseType: 'text',
+        transformResponse: (data) => data,
+        ...requestOptions
+    });
+    const text = String(response.data).trimStart();
+    // A misconfigured URL (e.g. a SPA root) answers every path with index.html.
+    if (text.startsWith('<')) throw new Error(`TIDAL instance ${new URL(url).origin} returned HTML instead of JSON`);
+    const retryAfter = Math.min(Math.max(Number(response.headers['retry-after']) || 1, 1), 10);
+    return { status: response.status, body: JSON.parse(text), retryAfter };
+}
+
 export async function tidalRequest<T = any>(path: string, params: Record<string, string | number | undefined> = {}, options: APIOptionProps = {}): Promise<T> {
     const { country, ...requestOptions } = options;
     void country; // the instance's own TIDAL session decides the region
@@ -75,18 +94,15 @@ export async function tidalRequest<T = any>(path: string, params: Record<string,
             if (value !== undefined && value !== null) url.searchParams.append(key, String(value));
         }
         try {
-            const response = await axios.get(url.toString(), {
-                httpAgent: agent,
-                httpsAgent: agent,
-                // Keep the body as text so an HTML error page can be told apart from JSON.
-                responseType: 'text',
-                transformResponse: (data) => data,
-                ...requestOptions
-            });
-            const body = String(response.data).trimStart();
-            // A misconfigured URL (e.g. a SPA root) answers every path with index.html.
-            if (body.startsWith('<')) throw new Error(`TIDAL instance ${url.origin} returned HTML instead of JSON`);
-            return JSON.parse(body) as T;
+            let { status, body, retryAfter } = await getJSON(url.toString(), agent, requestOptions);
+            // Playback endpoints answer 202 + { statusUrl } when every account on the
+            // instance is busy; poll the queued job on that same instance until it resolves.
+            for (let waited = 0; status === 202 && body?.statusUrl; waited += retryAfter) {
+                if (waited >= PLAYBACK_QUEUE_TIMEOUT_S) throw new Error(`TIDAL instance ${url.origin} kept the request queued for ${waited}s`);
+                await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+                ({ status, body, retryAfter } = await getJSON(url.origin + body.statusUrl, agent, requestOptions));
+            }
+            return body as T;
         } catch (error: any) {
             lastError = error;
             const status = error?.response?.status;
@@ -139,7 +155,8 @@ async function fetchAlbumWithTracks(id: string, options: APIOptionProps): Promis
 
 // /artist/?f= returns the whole discography (albums, EPs and singles) plus top tracks.
 async function fetchArtistContent(id: string, options: APIOptionProps): Promise<{ albums: TidalAlbum[]; topTracks: TidalTrack[] }> {
-    const body = await tidalRequest('/artist/', { f: id }, options);
+    // skip_tracks swaps the (slow) every-track-of-every-album aggregation for the artist's real top tracks.
+    const body = await tidalRequest('/artist/', { f: id, skip_tracks: 'true' }, options);
     const data = body?.albums || body?.tracks ? body : unwrap(body);
     const albums: TidalAlbum[] = data?.albums?.items ?? (Array.isArray(data?.items) ? data.items : []);
     const rawTracks = data?.topTracks?.items ?? data?.tracks?.items ?? data?.tracks;

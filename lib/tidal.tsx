@@ -40,6 +40,7 @@ export type TidalAlbum = {
     streamReady?: boolean;
     allowStreaming?: boolean;
     audioQuality?: string;
+    audioModes?: string[];
     mediaMetadata?: { tags?: string[] };
     artist?: TidalArtist;
     artists?: TidalArtist[];
@@ -60,6 +61,7 @@ export type TidalTrack = {
     allowStreaming?: boolean;
     streamStartDate?: string;
     audioQuality?: string;
+    audioModes?: string[];
     mediaMetadata?: { tags?: string[] };
     artist?: TidalArtist;
     artists?: TidalArtist[];
@@ -75,9 +77,13 @@ export type TidalPage<T> = { items: T[]; limit?: number; offset?: number; totalN
 export type TidalExtras = {
     id: number;
     link: string | null;
+    // TIDAL has a Dolby Atmos (E-AC-3 JOC) mix of this track/album.
+    atmos: boolean;
 };
 
 export const isTidalItem = (item: unknown): boolean => Boolean((item as { tidal?: TidalExtras } | null)?.tidal);
+
+export const isTidalAtmos = (item: unknown): boolean => Boolean((item as { tidal?: TidalExtras } | null)?.tidal?.atmos);
 
 // --- URL detection ---------------------------------------------------------
 // tidal.com/browse/album/{id}, listen.tidal.com/album/{id}, tidal.com/track/{id} ...
@@ -126,6 +132,10 @@ const toUnix = (date?: string) => {
 const isHiRes = (item: { audioQuality?: string; mediaMetadata?: { tags?: string[] } }) =>
     item.audioQuality === 'HI_RES_LOSSLESS' || Boolean(item.mediaMetadata?.tags?.includes('HIRES_LOSSLESS'));
 
+// Atmos shows up either as an audio mode or as a media tag, depending on the endpoint.
+const hasAtmos = (item: { audioModes?: string[]; mediaMetadata?: { tags?: string[] } }) =>
+    Boolean(item.audioModes?.includes('DOLBY_ATMOS') || item.mediaMetadata?.tags?.includes('DOLBY_ATMOS'));
+
 const isStreamable = (item: { streamReady?: boolean; allowStreaming?: boolean }) => item.streamReady !== false && item.allowStreaming !== false;
 
 const mainArtist = (item: { artist?: TidalArtist; artists?: TidalArtist[] }) =>
@@ -140,7 +150,7 @@ export function normalizeTidalArtist(artist: TidalArtist): QobuzArtist & { tidal
         id: artist.id,
         // TIDAL search results carry no release count; ReleaseCard shows it as "0 Releases".
         albums_count: 0,
-        tidal: { id: artist.id, link: artist.url ?? `https://tidal.com/browse/artist/${artist.id}` }
+        tidal: { id: artist.id, link: artist.url ?? `https://tidal.com/browse/artist/${artist.id}`, atmos: false }
     };
 }
 
@@ -173,7 +183,7 @@ export function normalizeTidalAlbum(album: Partial<TidalAlbum>, fallbackArtist?:
         hires,
         upc: album.upc || '',
         streamable: isStreamable(album),
-        tidal: { id, link: album.url ?? (id ? `https://tidal.com/browse/album/${id}` : null) }
+        tidal: { id, link: album.url ?? (id ? `https://tidal.com/browse/album/${id}` : null), atmos: hasAtmos(album) }
     };
 }
 
@@ -198,7 +208,7 @@ export function normalizeTidalTrack(track: TidalTrack, album?: QobuzAlbum): Qobu
         hires,
         streamable: isStreamable(track),
         media_number: track.volumeNumber ?? 1,
-        tidal: { id: track.id, link: track.url ?? `https://tidal.com/browse/track/${track.id}` }
+        tidal: { id: track.id, link: track.url ?? `https://tidal.com/browse/track/${track.id}`, atmos: hasAtmos(track) }
     };
 }
 

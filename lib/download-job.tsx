@@ -10,11 +10,34 @@ import { SettingsProps } from './settings-provider';
 import { StatusBarProps } from '@/components/status-bar/status-bar';
 import { ToastAction } from '@/components/ui/toast';
 import { zipSync } from 'fflate';
-import { isTidalItem } from './tidal';
+import { isTidalAtmos, isTidalItem } from './tidal';
 
 // TIDAL releases download through /api/tidal/*, which mirrors the Qobuz routes
 // (same quality ids, same signed-link response), so only the base path differs.
 const apiBaseFor = (item: QobuzAlbum | QobuzTrack) => (isTidalItem(item) ? '/api/tidal' : '/api');
+
+// Resolves a track's file URL. With "Prefer Dolby Atmos" on, TIDAL tracks that have
+// an Atmos mix try the Atmos file first and fall back to the stereo quality when
+// TIDAL won't serve it (e.g. DRM-protected). Atmos files are E-AC-3 JOC .m4a and
+// must be saved untouched: re-encoding or remuxing would lose the Atmos data.
+async function resolveTrackURL(track: QobuzTrack, settings: SettingsProps, country: string | undefined, signal: AbortSignal) {
+    if (settings.tidalAtmos && isTidalAtmos(track)) {
+        try {
+            const response = await axios.get('/api/tidal/download-music', { params: { track_id: track.id, atmos: 'true' }, signal });
+            return { url: response.data.data.url as string, atmos: true };
+        } catch (e) {
+            if (e instanceof AxiosError && e.code === 'ERR_CANCELED') throw e;
+        }
+    }
+    const response = await axios.get(`${apiBaseFor(track)}/download-music`, {
+        headers: { 'Token-Country': country },
+        params: { track_id: track.id, quality: settings.outputQuality },
+        signal
+    });
+    return { url: response.data.data.url as string, atmos: false };
+}
+
+const ATMOS_EXTENSION = 'm4a';
 
 export const createDownloadJob = async (
     result: QobuzAlbum | QobuzTrack,
@@ -50,14 +73,7 @@ export const createDownloadJob = async (
                     )
                         await loadFFmpeg(ffmpegState);
                     setStatusBar((prev) => ({ ...prev, description: 'Fetching track size...' }));
-                    const APIResponse = await axios.get(`${apiBaseFor(result)}/download-music`, {
-                        headers: {
-                            'Token-Country': country
-                        },
-                        params: { track_id: (result as QobuzTrack).id, quality: settings.outputQuality },
-                        signal
-                    });
-                    const trackURL = APIResponse.data.data.url;
+                    const { url: trackURL, atmos } = await resolveTrackURL(result as QobuzTrack, settings, country, signal);
                     const fileSizeResponse = await axios.head(trackURL, { signal });
                     const fileSize = fileSizeResponse.headers['content-length'];
                     const response = await axios.get(trackURL, {
@@ -75,6 +91,12 @@ export const createDownloadJob = async (
                         },
                         signal
                     });
+                    if (atmos) {
+                        // Saved as-is; browsers without E-AC-3 can't load it, so the duration check below is skipped too.
+                        proceedDownload(URL.createObjectURL(new Blob([response.data])), formattedTitle + '.' + ATMOS_EXTENSION);
+                        resolve();
+                        return;
+                    }
                     setStatusBar((prev) => ({ ...prev, description: `Applying metadata...`, progress: 100 }));
                     const inputFile = response.data;
                     const outputFile = await applyMetadata(inputFile, result as QobuzTrack, ffmpegState, settings, setStatusBar);
@@ -168,23 +190,23 @@ export const createDownloadJob = async (
                     })) as QobuzTrack[];
                     let totalAlbumSize = 0;
                     const albumUrls = [] as string[];
+                    // Parallel to albumUrls: whether that slot is an untouched Atmos file.
+                    const albumAtmos = [] as boolean[];
                     setStatusBar((prev) => ({ ...prev, description: 'Fetching album size...' }));
                     let currentDisk = 1;
                     let trackOffset = 0;
                     for (let index = 0; index < albumTracks.length; index++) {
                         const track = albumTracks[index];
                         if (track.streamable) {
-                            const fileURLResponse = await axios.get(`${apiBaseFor(track)}/download-music`, {
-                                params: { track_id: track.id, quality: settings.outputQuality },
-                                headers: { 'Token-Country': country },
-                                signal
-                            });
-                            const trackURL = fileURLResponse.data.data.url;
+                            const { url: trackURL, atmos } = await resolveTrackURL(track, settings, country, signal);
+                            let slot: number;
                             if (!(currentDisk === track.media_number)) {
                                 trackOffset = albumUrls.length;
                                 currentDisk = track.media_number;
-                                albumUrls.push(trackURL);
-                            } else albumUrls[track.track_number + trackOffset - 1] = trackURL;
+                                slot = albumUrls.length;
+                            } else slot = track.track_number + trackOffset - 1;
+                            albumUrls[slot] = trackURL;
+                            albumAtmos[slot] = atmos;
                             const fileSizeResponse = await axios.head(trackURL, { signal });
                             setStatusBar((statusBar) => ({
                                 ...statusBar,
@@ -220,6 +242,10 @@ export const createDownloadJob = async (
                             });
                             await new Promise((resolve) => setTimeout(resolve, 100));
                             totalBytesDownloaded += response.data.byteLength;
+                            if (albumAtmos[index]) {
+                                trackBuffers[index] = response.data;
+                                continue;
+                            }
                             const inputFile = response.data;
                             let outputFile = await applyMetadata(
                                 inputFile,
@@ -241,7 +267,8 @@ export const createDownloadJob = async (
                         ...trackBuffers.reduce(
                             (acc, buffer, index) => {
                                 if (buffer) {
-                                    const fileName = `${(index + 1).toString().padStart(Math.max(String(albumTracks.length - 1).length, 2), '0')} ${formatCustomTitle(settings.trackName, albumTracks[index])}.${codecMap[settings.outputCodec].extension}`;
+                                    const extension = albumAtmos[index] ? ATMOS_EXTENSION : codecMap[settings.outputCodec].extension;
+                                    const fileName = `${(index + 1).toString().padStart(Math.max(String(albumTracks.length - 1).length, 2), '0')} ${formatCustomTitle(settings.trackName, albumTracks[index])}.${extension}`;
 
                                     acc[cleanFileName(fileName)] = new Uint8Array(buffer);
                                 }

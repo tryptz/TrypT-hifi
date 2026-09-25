@@ -9,7 +9,7 @@ import { createDownloadJob } from '@/lib/download-job';
 import { createAppleDownloadJob } from '@/lib/apple-download-job';
 import { getFullAppleAlbumInfo } from '@/lib/apple-music';
 import { DeezerExtras, getFullDeezerAlbumInfo } from '@/lib/deezer';
-import { getFullTidalAlbumInfo } from '@/lib/tidal';
+import { getFullTidalAlbumInfo, isTidalAtmos } from '@/lib/tidal';
 import { useSource } from '@/lib/source-provider';
 import { useAppleHandoff } from '@/lib/apple-handoff-provider';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
@@ -310,6 +310,14 @@ const ReleaseCard = ({
                             THX
                         </p>
                     )}
+                    {isTidalAtmos(result) && (
+                        <p
+                            className='text-[10px] bg-primary text-primary-foreground p-1 rounded-[3px] h-[18px] text-center justify-center items-center shrink-0 flex font-semibold'
+                            title='Dolby Atmos'
+                        >
+                            ATMOS
+                        </p>
+                    )}
                     <h1 className='text-sm truncate font-bold group-hover:underline'>{formatTitle(result)}</h1>
                 </div>
                 {!(getType(result) === 'artists') && (
@@ -410,6 +418,14 @@ const ReleaseCard = ({
                                                                 title='THX Spatial Audio'
                                                             >
                                                                 THX
+                                                            </p>
+                                                        )}
+                                                        {isTidalAtmos(track) && (
+                                                            <p
+                                                                className='text-[10px] bg-primary text-primary-foreground p-1 rounded-[3px] h-[18px] shrink-0 text-center justify-center items-center flex font-semibold'
+                                                                title='Dolby Atmos'
+                                                            >
+                                                                ATMOS
                                                             </p>
                                                         )}
                                                         <p className='truncate font-medium'>{formatTitle(track)}</p>
