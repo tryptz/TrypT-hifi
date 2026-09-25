@@ -74,7 +74,7 @@ const SearchBar = ({
             setTimeout(async () => {
                 try {
                     const response = await axios.get(sourceApiBase(source) + '/get-music', {
-                        params: { q: buildSearchQuery(searchInput, source === 'apple' ? false : multichannel), offset: 0 },
+                        params: { q: buildSearchQuery(searchInput, source === 'qobuz' ? multichannel : false), offset: 0 },
                         headers: {
                             'Token-Country': country
                         },

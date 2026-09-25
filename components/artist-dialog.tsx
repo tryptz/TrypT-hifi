@@ -18,7 +18,7 @@ import { useStatusBar } from '@/lib/status-bar/context';
 import { useTheme } from 'next-themes';
 import { useToast } from '@/hooks/use-toast';
 import { useCountry } from '@/lib/country-provider';
-import { sourceApiBase, useSource } from '@/lib/source-provider';
+import { isPreParsedSource, sourceApiBase, useSource } from '@/lib/source-provider';
 import { useAppleHandoff } from '@/lib/apple-handoff-provider';
 
 export type CategoryType = {
@@ -61,8 +61,8 @@ const ArtistDialog = ({ open, setOpen, artist }: { open: boolean; setOpen: (open
         if (artistResults) return;
         try {
             const response = await axios.get(`${sourceApiBase(source)}/get-artist`, { params: { artist_id: artist.id }, headers: { 'Token-Country': country } });
-            // Apple responses arrive already parsed (server-side); Qobuz needs parseArtistData.
-            setArtistResults(source === 'apple' ? response.data.data : parseArtistData(response.data.data));
+            // Apple/Deezer responses arrive already parsed (server-side); Qobuz needs parseArtistData.
+            setArtistResults(isPreParsedSource(source) ? response.data.data : parseArtistData(response.data.data));
         } catch {
             toast({ title: 'Error', description: 'Could not fetch artist data, check your token' });
         }
@@ -81,7 +81,7 @@ const ArtistDialog = ({ open, setOpen, artist }: { open: boolean; setOpen: (open
         });
         const newReleases = [
             ...artistResults!.artist.releases[searchField].items,
-            ...(source === 'apple' ? response.data.data.items : response.data.data.items.map((release: any) => parseArtistAlbumData(release)))
+            ...(isPreParsedSource(source) ? response.data.data.items : response.data.data.items.map((release: any) => parseArtistAlbumData(release)))
         ];
         setArtistResults({
             ...artistResults!,
@@ -149,7 +149,7 @@ const ArtistDialog = ({ open, setOpen, artist }: { open: boolean; setOpen: (open
                             )}
                         </div>
                         <div className='flex items-center w-full justify-between gap-2'>
-                            {artistResults && (
+                            {artistResults && source !== 'deezer' && (
                                 <Button
                                     size='icon'
                                     variant='ghost'
@@ -220,7 +220,7 @@ const ArtistReleaseSection = ({
         });
         const newReleases = [
             ...artistResults!.artist.releases[searchField].items,
-            ...(source === 'apple' ? response.data.data.items : response.data.data.items.map((release: any) => parseArtistAlbumData(release)))
+            ...(isPreParsedSource(source) ? response.data.data.items : response.data.data.items.map((release: any) => parseArtistAlbumData(release)))
         ];
         setArtistResults({
             ...artistResults!,
@@ -254,19 +254,21 @@ const ArtistReleaseSection = ({
                     <div className='flex gap-2 items-center mb-2'>
                         <category.icon />
                         <h1 className='text-lg md:text-2xl font-bold capitalize'>{category.label}</h1>
-                        <Button
-                            variant='outline'
-                            className='ml-2'
-                            onClick={() => {
-                                if (source === 'apple')
-                                    downloadAppleArtistDiscography(artistResults!, setArtistResults, fetchMore, category.value, setStatusBar, settings, toast, showHandoff, country);
-                                else
-                                    downloadArtistDiscography(artistResults!, setArtistResults, fetchMore, category.value, setStatusBar, settings, toast, ffmpegState!);
-                            }}
-                        >
-                            Download All
-                            <DownloadIcon />
-                        </Button>
+                        {source !== 'deezer' && (
+                            <Button
+                                variant='outline'
+                                className='ml-2'
+                                onClick={() => {
+                                    if (source === 'apple')
+                                        downloadAppleArtistDiscography(artistResults!, setArtistResults, fetchMore, category.value, setStatusBar, settings, toast, showHandoff, country);
+                                    else
+                                        downloadArtistDiscography(artistResults!, setArtistResults, fetchMore, category.value, setStatusBar, settings, toast, ffmpegState!);
+                                }}
+                            >
+                                Download All
+                                <DownloadIcon />
+                            </Button>
+                        )}
                     </div>
                     <ScrollArea className='max-w-full overflow-x-clip'>
                         <div className='flex gap-2'>

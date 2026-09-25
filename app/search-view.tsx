@@ -16,7 +16,7 @@ import { useSettings } from '@/lib/settings-provider';
 import { useTheme } from 'next-themes';
 import CountryPicker from '@/components/country-picker';
 import { useCountry } from '@/lib/country-provider';
-import { sourceApiBase, useSource } from '@/lib/source-provider';
+import { MUSIC_SOURCES, sourceApiBase, sourceLabels, useSource } from '@/lib/source-provider';
 
 export const filterData: FilterDataType = [
     {
@@ -260,11 +260,11 @@ const SearchView = () => {
     }, [country]);
 
     useEffect(() => {
-        // Multichannel is a Qobuz-only hashtag search; disable it on Apple.
-        if (source === 'apple' && multichannel) setMultichannel(false);
+        // Multichannel is a Qobuz-only hashtag search; disable it on other sources.
+        if (source !== 'qobuz' && multichannel) setMultichannel(false);
         if (query) {
             setSearching(true);
-            onSearch(query, searchField, source === 'apple' ? false : multichannel);
+            onSearch(query, searchField, source === 'qobuz' ? multichannel : false);
         }
     }, [source]);
 
@@ -319,12 +319,11 @@ const SearchView = () => {
                         <div className='flex items-center gap-2'>
                             <Button
                                 variant='outline'
-                                aria-pressed={source === 'apple'}
                                 title='Switch music source'
-                                onClick={() => setSource(source === 'apple' ? 'qobuz' : 'apple')}
+                                onClick={() => setSource(MUSIC_SOURCES[(MUSIC_SOURCES.indexOf(source) + 1) % MUSIC_SOURCES.length])}
                                 className='my-2 flex gap-2 focus-visible:outline-none focus-visible:ring-transparent select-none shadow-none outline-none !z-[99]'
                             >
-                                <span>{source === 'apple' ? 'Apple Music' : 'Qobuz'}</span>
+                                <span>{sourceLabels[source]}</span>
                             </Button>
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -346,7 +345,7 @@ const SearchView = () => {
                                     </DropdownMenuRadioGroup>
                                 </DropdownMenuContent>
                             </DropdownMenu>
-                            {source !== 'apple' && (
+                            {source === 'qobuz' && (
                                 <Button
                                     variant={multichannel ? 'default' : 'outline'}
                                     aria-pressed={multichannel}
