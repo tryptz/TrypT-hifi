@@ -42,6 +42,52 @@ function proxyAgent() {
     return undefined;
 }
 
+// --- Pacing and retries ----------------------------------------------------
+//
+// Deezer's API sits behind a CDN that answers a burst of parallel requests from
+// one IP with an HTML "Access Denied" page (HTTP 403) — well before the
+// documented 50 requests / 5 s, and most readily for datacenter IPs. A search
+// fans out three requests at once and an artist page three more plus its
+// discography pages, so a couple of people browsing tripped it, and one refused
+// request failed the whole page. So every request goes through one shared
+// queue: at most MAX_IN_FLIGHT at a time, starts spaced MIN_SPACING_MS apart,
+// and the transient failures (CDN refusal, 429, 5xx, a dropped connection,
+// Deezer's own quota error) are retried with a growing, jittered wait.
+
+const MAX_IN_FLIGHT = 2;
+const MIN_SPACING_MS = 120;
+const MAX_ATTEMPTS = 5;
+
+type Pacer = { inFlight: number; lastStart: number; waiting: (() => void)[] };
+// On globalThis: each route bundle gets its own copy of this module, and they
+// must share one queue — the CDN counts the server's IP, not the route.
+const pacer: Pacer = ((globalThis as any).__deezerPacer ??= { inFlight: 0, lastStart: 0, waiting: [] });
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function acquire() {
+    while (pacer.inFlight >= MAX_IN_FLIGHT) await new Promise<void>((resolve) => pacer.waiting.push(resolve));
+    pacer.inFlight++;
+    const wait = pacer.lastStart + MIN_SPACING_MS - Date.now();
+    pacer.lastStart = Math.max(Date.now(), pacer.lastStart + MIN_SPACING_MS);
+    if (wait > 0) await sleep(wait);
+}
+
+function release() {
+    pacer.inFlight--;
+    pacer.waiting.shift()?.();
+}
+
+function isTransient(error: any): boolean {
+    const status = error?.response?.status;
+    if (status === 403 || status === 429 || (status >= 500 && status < 600)) return true;
+    // No response at all: reset, timeout, refused.
+    return !error?.response && ['ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED', 'EAI_AGAIN', 'ECONNREFUSED', 'EPIPE'].includes(error?.code);
+}
+
+// 0.5 s, 1 s, 2 s, 4 s, each ±25 %, so parallel retries don't land together again.
+const backoff = (attempt: number) => 500 * Math.pow(2, attempt) * (0.75 + Math.random() * 0.5);
+
 export async function deezerRequest<T = any>(path: string, params: Record<string, string | number | undefined> = {}, options: APIOptionProps = {}): Promise<T> {
     const { country, ...requestOptions } = options;
     void country; // the public API picks the region from the caller's IP
@@ -53,14 +99,36 @@ export async function deezerRequest<T = any>(path: string, params: Record<string
     const target = process.env.CORS_PROXY ? process.env.CORS_PROXY + encodeURIComponent(url.toString()) : url.toString();
 
     for (let attempt = 0; ; attempt++) {
-        const response = await axios.get(target, { httpAgent: agent, httpsAgent: agent, ...requestOptions });
-        const error = (response.data as DeezerError)?.error;
-        if (!error) return response.data as T;
-        if (error.code === QUOTA_EXCEEDED && attempt < 3) {
-            await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
+        const last = attempt >= MAX_ATTEMPTS - 1;
+        let data: any;
+        let failure: any = null;
+        // The slot is held for the request only — never across a backoff wait,
+        // or one retrying request would stall everyone else.
+        await acquire();
+        try {
+            data = (await axios.get(target, { httpAgent: agent, httpsAgent: agent, timeout: 15000, ...requestOptions })).data;
+        } catch (error: any) {
+            failure = error;
+        } finally {
+            release();
+        }
+        if (failure) {
+            if (!last && isTransient(failure)) {
+                await sleep(backoff(attempt));
+                continue;
+            }
+            const status = failure?.response?.status;
+            throw new Error(status === 403
+                ? `Deezer refused the request (HTTP 403 from its CDN) ${attempt + 1} times; try again in a moment.`
+                : `Deezer: ${failure?.message || 'request failed'}`);
+        }
+        const deezerError = (data as DeezerError)?.error;
+        if (!deezerError) return data as T;
+        if (deezerError.code === QUOTA_EXCEEDED && !last) {
+            await sleep(backoff(attempt));
             continue;
         }
-        throw new Error(`Deezer: ${error.message || error.type} (code ${error.code})`);
+        throw new Error(`Deezer: ${deezerError.message || deezerError.type} (code ${deezerError.code})`);
     }
 }
 
