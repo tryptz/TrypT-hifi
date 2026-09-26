@@ -1,4 +1,5 @@
 import ArtistDialog from './artist-dialog';
+import SourceTag from './source-tag';
 import DownloadAlbumButton from './download-album-button';
 import Image from 'next/image';
 import React, { useEffect, useState } from 'react';
@@ -294,6 +295,7 @@ const ReleaseCard = ({
             </div>
             <div className='space-y-1'>
                 <div className='flex gap-1.5 items-center'>
+                    <SourceTag item={result} />
                     {(result as QobuzAlbum | QobuzTrack).parental_warning && (
                         <p
                             className='text-[10px] bg-primary text-primary-foreground p-1 rounded-[3px] aspect-square w-[18px] h-[18px] text-center justify-center items-center shrink-0 flex font-semibold'

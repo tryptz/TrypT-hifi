@@ -14,6 +14,22 @@ export const sourceApiBase = (source: MusicSource): string => (source === 'qobuz
 
 // Apple, Deezer and TIDAL routes return artist/release data already normalized server-side;
 // only raw Qobuz responses still need parseArtistData / parseArtistAlbumData on the client.
+// The catalog an item actually came from, read from the item itself (each
+// non-Qobuz normalizer attaches its own marker: `apple`, `deezer`, `tidal`;
+// tracks may carry it on their album) rather than from the source toggle, so a
+// list that outlives a source switch still labels every entry truthfully.
+export const itemSource = (item: unknown): MusicSource => {
+    const marked = (x: unknown): MusicSource | null => {
+        const o = x as { apple?: unknown; deezer?: unknown; tidal?: unknown } | null | undefined;
+        if (!o) return null;
+        if (o.tidal) return 'tidal';
+        if (o.deezer) return 'deezer';
+        if (o.apple) return 'apple';
+        return null;
+    };
+    return marked(item) ?? marked((item as { album?: unknown } | null)?.album) ?? 'qobuz';
+};
+
 export const isPreParsedSource = (source: MusicSource): boolean => source !== 'qobuz';
 
 const SourceContext = createContext<
