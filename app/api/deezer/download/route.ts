@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDeezerTrackInfo, checkDeezerTrackAvailability, getDeezerDownloadURL } from '@/lib/deezer-dl-server';
+import { getDeezerTrackInfo, checkDeezerTrackAvailability, getDeezerDownloadURL, getDeezerTrackStreamData } from '@/lib/deezer-dl-server';
 import z from 'zod';
 
 // Parameters schema. Kept module-private: a Next.js route file may only export
@@ -28,8 +28,8 @@ export async function GET(request: NextRequest) {
             );
         }
         
-        // Fetch track info
-        const trackInfo = await getDeezerTrackInfo(track_id, {});
+        // Fetch track info (already have availability metadata; use it for the title)
+        const trackInfo = availability;
         
         if (!trackInfo) {
             return new NextResponse(
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
         if (bestQuality === '7' && !mp3_320) bestQuality = '5';
         
         const downloadUrl = await getDeezerDownloadURL(track_id, bestQuality);
-        
+
         if (!downloadUrl) {
             return new NextResponse(
                 JSON.stringify({
@@ -60,7 +60,8 @@ export async function GET(request: NextRequest) {
                 { status: 502 }
             );
         }
-        
+
+        const trackMeta = await getDeezerTrackStreamData(track_id);
         return new NextResponse(
             JSON.stringify({
                 success: true,
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest) {
                     url: downloadUrl,
                     quality: bestQuality,
                     track_id: track_id,
-                    title: trackInfo.title
+                    title: (trackMeta.SNG_TITLE as string) || (availability as { title?: string })?.title || undefined
                 }
             }),
             { status: 200 }
