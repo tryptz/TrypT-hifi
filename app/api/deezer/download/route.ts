@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDeezerTrackInfo, checkDeezerTrackAvailability, getDeezerDownloadURL, getDeezerTrackStreamData } from '@/lib/deezer-dl-server';
+import { checkDeezerTrackAvailability, getDeezerDownloadURL, getDeezerTrackStreamData } from '@/lib/deezer-dl-server';
 import z from 'zod';
 
 // Parameters schema. Kept module-private: a Next.js route file may only export
