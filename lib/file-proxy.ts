@@ -33,6 +33,18 @@ export function signFileURL(upstreamUrl: string, origin: string, ttlSeconds: num
     return proxied.toString();
 }
 
+// Signs a link to one of our own routes that serves a file itself (e.g.
+// /api/deezer/file). `value` must encode everything the route acts on, and the
+// route checks it with verifyFileURL(value, exp, sig).
+export function signRouteURL(pathname: string, value: string, params: Record<string, string>, origin: string, ttlSeconds: number = DEFAULT_TTL_SECONDS): string {
+    const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+    const url = new URL(pathname, origin);
+    for (const [key, v] of Object.entries(params)) url.searchParams.set(key, v);
+    url.searchParams.set('exp', exp.toString());
+    url.searchParams.set('sig', computeSignature(value, exp));
+    return url.toString();
+}
+
 export function verifyFileURL(url: string, exp: number, sig: string): 'ok' | 'invalid' | 'expired' {
     const expected = Buffer.from(computeSignature(url, exp), 'hex');
     const provided = Buffer.from(sig, 'hex');
