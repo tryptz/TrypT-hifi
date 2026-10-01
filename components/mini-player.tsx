@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { Slider } from './ui/slider';
 import { formatArtists, formatTitle, getAlbum } from '@/lib/qobuz-dl';
 import { usePlayer } from '@/lib/player-provider';
+import SourceTag from './source-tag';
 
 // Height of the bar, shared with the status bar and page padding so nothing hides behind it.
 export const MINI_PLAYER_HEIGHT = 80;
@@ -48,9 +49,12 @@ const MiniPlayer = () => {
                                 )}
                             </div>
                             <div className='min-w-0'>
-                                <p className='text-sm font-bold truncate' title={formatTitle(current)}>
-                                    {formatTitle(current)}
-                                </p>
+                                <div className='flex items-center gap-1.5 min-w-0'>
+                                    <SourceTag item={current} />
+                                    <p className='text-sm font-bold truncate' title={formatTitle(current)}>
+                                        {formatTitle(current)}
+                                    </p>
+                                </div>
                                 <p className='text-xs text-muted-foreground truncate' title={formatArtists(current)}>
                                     {formatArtists(current)}
                                 </p>

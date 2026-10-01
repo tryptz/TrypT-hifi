@@ -3,6 +3,8 @@ import axios from 'axios';
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { formatArtists, formatTitle, getAlbum, QobuzAlbum, QobuzTrack } from './qobuz-dl';
 import { useCountry } from './country-provider';
+import { isDeezerItem } from './deezer';
+import { isTidalItem } from './tidal';
 
 // ---------------------------------------------------------------------------
 // In-browser streaming for Qobuz search results. A single <audio> element lives
@@ -15,6 +17,10 @@ import { useCountry } from './country-provider';
 // Quality ids understood by /api/download-music. CD-quality FLAC plays natively
 // in every modern browser and is a fraction of the size of hi-res; MP3 320 is
 // the fallback for browsers that refuse FLAC.
+// Deezer tracks resolve through /api/deezer/preview instead, which returns the
+// same signed-link shape for the track's 30-second MP3 preview. TIDAL tracks use
+// /api/tidal/download-music, which takes the same quality ids (MP3 320 maps to
+// TIDAL's AAC 320 there, which every browser can decode).
 const STREAM_QUALITY = '6';
 const FALLBACK_QUALITY = '5';
 
@@ -75,10 +81,12 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             setCurrentTime(0);
             setDuration(track.duration || 0);
             try {
-                const response = await axios.get('/api/download-music', {
-                    params: { track_id: track.id, quality },
-                    headers: country ? { 'Token-Country': country } : {}
-                });
+                const response = isDeezerItem(track)
+                    ? await axios.get('/api/deezer/preview', { params: { track_id: track.id } })
+                    : await axios.get(isTidalItem(track) ? '/api/tidal/download-music' : '/api/download-music', {
+                          params: { track_id: track.id, quality },
+                          headers: country ? { 'Token-Country': country } : {}
+                      });
                 if (token !== loadToken.current) return;
                 audio.src = response.data.data.url;
                 await audio.play();
@@ -111,7 +119,8 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     const playAlbum = useCallback(
         async (album: QobuzAlbum, startIndex = 0) => {
-            const response = await axios.get('/api/get-album', { params: { album_id: album.id }, headers: country ? { 'Token-Country': country } : {} });
+            const albumRoute = isDeezerItem(album) ? '/api/deezer/get-album' : isTidalItem(album) ? '/api/tidal/get-album' : '/api/get-album';
+            const response = await axios.get(albumRoute, { params: { album_id: album.id }, headers: country ? { 'Token-Country': country } : {} });
             const tracks: QobuzTrack[] = response.data.data.tracks.items.map((track: QobuzTrack) => ({ ...track, album }));
             playTracks(tracks, startIndex);
         },
@@ -169,8 +178,9 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     const onError = () => {
         // A browser that can't decode FLAC gets one retry at MP3 320 before we give up on the track.
+        // Deezer previews are already MP3, so there is nothing to fall back to.
         if (!current || !audioRef.current?.getAttribute('src')) return;
-        if (!usedFallback.current) {
+        if (!usedFallback.current && !isDeezerItem(current)) {
             usedFallback.current = true;
             loadTrack(current, FALLBACK_QUALITY);
             return;

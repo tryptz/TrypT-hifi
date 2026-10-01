@@ -1,13 +1,16 @@
 import ArtistDialog from './artist-dialog';
+import SourceTag from './source-tag';
 import DownloadAlbumButton from './download-album-button';
 import Image from 'next/image';
 import React, { useEffect, useState } from 'react';
-import { AlignJustifyIcon, DotIcon, DownloadIcon, UsersIcon, DiscAlbumIcon, Loader2Icon, PlayIcon } from 'lucide-react';
+import { AlignJustifyIcon, DotIcon, DownloadIcon, UsersIcon, DiscAlbumIcon, ExternalLinkIcon, Loader2Icon, PlayIcon } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
 import { createDownloadJob } from '@/lib/download-job';
 import { createAppleDownloadJob } from '@/lib/apple-download-job';
 import { getFullAppleAlbumInfo } from '@/lib/apple-music';
+import { DeezerExtras, getFullDeezerAlbumInfo } from '@/lib/deezer';
+import { getFullTidalAlbumInfo, isTidalAtmos } from '@/lib/tidal';
 import { useSource } from '@/lib/source-provider';
 import { useAppleHandoff } from '@/lib/apple-handoff-provider';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
@@ -76,8 +79,12 @@ const ReleaseCard = ({
     const { playTracks, playAlbum } = usePlayer();
     const [startingPlayback, setStartingPlayback] = useState(false);
 
-    // Streaming is Qobuz-only: Apple audio is DRM-encrypted and handed off to the native app instead.
-    const canStream = source === 'qobuz' && getType(result) !== 'artists' && (result as QobuzAlbum | QobuzTrack).streamable !== false;
+    // Qobuz and TIDAL stream full tracks and Deezer plays 30-second previews. Apple
+    // audio is DRM-encrypted and handed off to the native app instead.
+    const sourceCanStream = source === 'qobuz' || source === 'deezer' || source === 'tidal';
+    const canStream = sourceCanStream && getType(result) !== 'artists' && (result as QobuzAlbum | QobuzTrack).streamable !== false;
+    // Deezer has no downloads; its cards link out to the release on deezer.com instead.
+    const deezerLink = (result as { deezer?: DeezerExtras }).deezer?.link;
 
     const playResult = async () => {
         if ((result as QobuzTrack).album) {
@@ -114,7 +121,7 @@ const ReleaseCard = ({
                                 <p className='text-sm truncate capitalize font-bold'>
                                     {!(getType(result) === 'artists') ? album.genre.name : (result as QobuzArtist).albums_count + ' Releases'}
                                 </p>
-                                {!(getType(result) === 'artists') && (
+                                {!(getType(result) === 'artists') && album.released_at > 0 && (
                                     <p className='text-xs truncate capitalize font-medium'>{new Date(album.released_at * 1000).getFullYear()}</p>
                                 )}
                                 {!(getType(result) === 'artists') && (
@@ -153,7 +160,15 @@ const ReleaseCard = ({
                         </div>
                         {!(getType(result) === 'artists') && (
                             <div className='flex items-center justify-between gap-4 p-2'>
-                                {(result as QobuzTrack).album ? (
+                                {source === 'deezer' ? (
+                                    deezerLink && (
+                                        <Button size='icon' variant='ghost' title='Open in Deezer' asChild>
+                                            <a href={deezerLink} target='_blank' rel='noopener noreferrer'>
+                                                <ExternalLinkIcon />
+                                            </a>
+                                        </Button>
+                                    )
+                                ) : (result as QobuzTrack).album ? (
                                     <Button
                                         size='icon'
                                         variant='ghost'
@@ -214,6 +229,8 @@ const ReleaseCard = ({
                                             setOpenTracklist(!openTracklist);
                                             if (source === 'apple')
                                                 await getFullAppleAlbumInfo(fetchedAlbumData, setFetchedAlbumData, result as QobuzAlbum, country);
+                                            else if (source === 'deezer') await getFullDeezerAlbumInfo(fetchedAlbumData, setFetchedAlbumData, result as QobuzAlbum);
+                                            else if (source === 'tidal') await getFullTidalAlbumInfo(fetchedAlbumData, setFetchedAlbumData, result as QobuzAlbum);
                                             else await getFullAlbumInfo(fetchedAlbumData, setFetchedAlbumData, result as QobuzAlbum, country);
                                         }}
                                     >
@@ -278,6 +295,7 @@ const ReleaseCard = ({
             </div>
             <div className='space-y-1'>
                 <div className='flex gap-1.5 items-center'>
+                    <SourceTag item={result} />
                     {(result as QobuzAlbum | QobuzTrack).parental_warning && (
                         <p
                             className='text-[10px] bg-primary text-primary-foreground p-1 rounded-[3px] aspect-square w-[18px] h-[18px] text-center justify-center items-center shrink-0 flex font-semibold'
@@ -292,6 +310,14 @@ const ReleaseCard = ({
                             title='THX Spatial Audio'
                         >
                             THX
+                        </p>
+                    )}
+                    {isTidalAtmos(result) && (
+                        <p
+                            className='text-[10px] bg-primary text-primary-foreground p-1 rounded-[3px] h-[18px] text-center justify-center items-center shrink-0 flex font-semibold'
+                            title='Dolby Atmos'
+                        >
+                            ATMOS
                         </p>
                     )}
                     <h1 className='text-sm truncate font-bold group-hover:underline'>{formatTitle(result)}</h1>
@@ -396,9 +422,17 @@ const ReleaseCard = ({
                                                                 THX
                                                             </p>
                                                         )}
+                                                        {isTidalAtmos(track) && (
+                                                            <p
+                                                                className='text-[10px] bg-primary text-primary-foreground p-1 rounded-[3px] h-[18px] shrink-0 text-center justify-center items-center flex font-semibold'
+                                                                title='Dolby Atmos'
+                                                            >
+                                                                ATMOS
+                                                            </p>
+                                                        )}
                                                         <p className='truncate font-medium'>{formatTitle(track)}</p>
                                                     </div>
-                                                    {track.streamable && source === 'qobuz' && (
+                                                    {track.streamable && sourceCanStream && (
                                                         <Button
                                                             title={`Play '${formatTitle(track)}'`}
                                                             className='md:group-hover:flex md:hidden justify-center aspect-square h-6 w-6 [&_svg]:size-5 hover:bg-transparent ml-auto'
@@ -409,7 +443,7 @@ const ReleaseCard = ({
                                                             <PlayIcon className='!size-4' />
                                                         </Button>
                                                     )}
-                                                    {track.streamable && (
+                                                    {track.streamable && source !== 'deezer' && (
                                                         <Button
                                                             title={`Download '${formatTitle(track)}'`}
                                                             className='md:group-hover:flex md:hidden justify-center aspect-square h-6 w-6 [&_svg]:size-5 hover:bg-transparent'

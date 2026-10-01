@@ -10,6 +10,20 @@ const nextConfig: NextConfig = {
                 port: '',
                 pathname: '**',
                 search: ''
+            },
+            {
+                protocol: 'https',
+                hostname: 'cdn-images.dzcdn.net',
+                port: '',
+                pathname: '**',
+                search: ''
+            },
+            {
+                protocol: 'https',
+                hostname: 'resources.tidal.com',
+                port: '',
+                pathname: '**',
+                search: ''
             }
         ]
     },

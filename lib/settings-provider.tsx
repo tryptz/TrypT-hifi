@@ -8,6 +8,9 @@ export type SettingsProps = {
     // Apple Music source quality tier. Not an FFmpeg re-encode target — Atmos
     // (EC-3 JOC) is a passthrough handled on-device by Tryptify, never here.
     appleQuality: 'alac' | 'hires-lossless' | 'atmos' | 'aac';
+    // Download TIDAL tracks that have a Dolby Atmos mix as the original E-AC-3 JOC
+    // .m4a (passed through untouched) instead of the stereo quality above.
+    tidalAtmos: boolean;
     bitrate: number | undefined;
     applyMetadata: boolean;
     fixMD5: boolean;
@@ -53,6 +56,7 @@ export const defaultSettings: SettingsProps = {
     outputQuality: '27',
     outputCodec: 'FLAC',
     appleQuality: 'alac',
+    tidalAtmos: false,
     bitrate: 320,
     applyMetadata: true,
     fixMD5: false,

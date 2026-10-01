@@ -91,6 +91,38 @@ docker-compose up -d
 Before you can use Qobuz-DL, you need to change the .env file in the root directory. The default configuration will NOT work. QOBUZ_APP_ID and QOBUZ_SECRET must be set to the correct values. To find these you can use [this tool](https://github.com/QobuzDL/Qobuz-AppID-Secret-Tool).
 Additionally, in order to download files longer than 30 seconds, a valid Qobuz token is needed. This can be found in the localuser.token key of localstorage on the [official Qobuz website](https://play.qobuz.com/) for any paying members.
 
+#### Deezer Integration (Optional)
+
+Qobuz-DL also includes Deezer as a music source. To enable Deezer downloads (full tracks, not just previews), you need to set the `DEEZER_ARL` environment variable:
+
+1. **Get your Deezer ARL cookie**:
+   - Open https://www.deezer.com in a logged-in browser
+   - Open DevTools → Application → Cookies → deezer.com
+   - Copy the value of the "arl" cookie
+
+2. **Add it to your .env file**:
+   ```env
+   DEEZER_ARL=your_arl_cookie_value_here
+   ```
+
+**Important**: Deezer downloads require authentication via the ARL cookie. Without it, you'll only be able to browse the Deezer catalog and play 30-second previews.
+
+The Deezer downloader can fetch full-length tracks in MP3 128/320 and FLAC (HiFi) quality when using the ARL cookie.
+
+#### TIDAL Integration (Optional)
+
+TIDAL is available as a fourth source (the source button cycles Qobuz → Apple Music → Deezer → TIDAL). It talks to a HiFi API instance, the same backend Tryptify's "Tidal HiFi URL" setting uses:
+
+```env
+TIDAL_API_BASE=https://your-hifi-instance.example.com
+# or several, for failover:
+# TIDAL_API_BASE=https://a.example.com,https://b.example.com
+```
+
+With it set you can search TIDAL (or paste `tidal.com` album/track/artist links), stream full tracks in the browser, and download tracks and albums through the regular download pipeline. The quality setting maps to TIDAL qualities: Hi-Res → `HI_RES_LOSSLESS` (falls back to 16-bit `LOSSLESS` when the instance only offers a DASH stream), CD → `LOSSLESS`, MP3 320 → `HIGH` (AAC 320).
+
+**Dolby Atmos:** releases with an Atmos mix get an `ATMOS` badge. Turn on *Prefer Dolby Atmos* in settings (shown while TIDAL is the active source) to download those tracks as the original E-AC-3 JOC `.m4a`, fetched through the instance's `/trackManifests/` endpoint and assembled from its DASH segments server-side. Atmos files are passed through byte-for-byte (no re-encode, no tags) so players still see them as Atmos; tracks without an Atmos mix, or whose Atmos stream TIDAL serves DRM-protected, fall back to the stereo quality. In-browser playback stays stereo, since most browsers can't decode E-AC-3.
+
 ### Discord bot integration (optional)
 
 An "Add Bot" button can be shown in the header to let users invite your Discord bot to their server. It only renders when configured, using either of the following:
