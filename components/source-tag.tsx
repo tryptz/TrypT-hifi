@@ -13,7 +13,6 @@ const SourceTag = ({ item, className }: { item: unknown; className?: string }) =
     const { source } = useSource();
     const from = itemSource(item);
     const mismatch = from !== source;
-    const preview = from === 'deezer';
     return (
         <p
             className={cn(
@@ -21,7 +20,7 @@ const SourceTag = ({ item, className }: { item: unknown; className?: string }) =
                 mismatch ? 'bg-amber-500 text-black border-amber-500' : 'border-primary/60 text-primary',
                 className
             )}
-            title={`From ${sourceLabels[from]}${preview ? ' (30-second previews)' : ''}${mismatch ? ` — not the selected source (${sourceLabels[source]})` : ''}`}
+            title={`From ${sourceLabels[from]}${mismatch ? ` — not the selected source (${sourceLabels[source]})` : ''}`}
         >
             {shortLabels[from]}
         </p>
