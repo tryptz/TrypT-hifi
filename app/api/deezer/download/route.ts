@@ -1,27 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDeezerTrackInfo, checkDeezerTrackAvailability } from '@/lib/deezer-dl-server';
+import { getDeezerTrackInfo, checkDeezerTrackAvailability, getDeezerDownloadURL } from '@/lib/deezer-dl-server';
 import z from 'zod';
 
-// Parameters schema
-export const downloadParamsSchema = z.object({
+// Parameters schema. Kept module-private: a Next.js route file may only export
+// HTTP handlers and route config, so exporting this fails the build.
+const downloadParamsSchema = z.object({
     track_id: z.string().regex(/^\d+$/, 'ID must be numeric'),
     quality: z.enum(['5', '7', '6', '27']).default('27')
-});
-
-// Response schema
-export const downloadResponseSchema = z.object({
-    success: z.boolean().optional(),
-    data: z.union(
-        z.object({
-            url: z.string(),
-            quality: z.number()
-        }),
-        z.array(z.object({
-            track_id: z.string(),
-            quality: z.number(),
-            url: z.string()
-        }))
-    )
 });
 
 export async function GET(request: NextRequest) {
@@ -56,22 +41,13 @@ export async function GET(request: NextRequest) {
             );
         }
         
-        // Build download URL based on quality
-        const qualityMap = {
-            '5': 1,   // MP3 128
-            '7': 3,   // MP3 320
-            '6': 9,   // FLAC
-            '27': 9   // FLAC
-        };
-        const qualityLevel = qualityMap[quality];
-        
-        // Determine best quality available
+        // Fall back to the best quality this ARL can actually serve.
+        // getDeezerDownloadURL maps these keys to Deezer's own levels (1/3/9).
+        const { flac, mp3_320 } = availability.available_qualities;
+        const wantsFlac = quality === '6' || quality === '27';
         let bestQuality = quality;
-        if (qualityLevel === 9 && trackInfo.available_qualities.flac) {
-            bestQuality = 9;
-        } else if (qualityLevel === 3 && trackInfo.available_qualities.mp3_320) {
-            bestQuality = 3;
-        }
+        if (wantsFlac && !flac) bestQuality = '7';
+        if (bestQuality === '7' && !mp3_320) bestQuality = '5';
         
         const downloadUrl = await getDeezerDownloadURL(track_id, bestQuality);
         
