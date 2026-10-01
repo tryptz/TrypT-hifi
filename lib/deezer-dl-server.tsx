@@ -129,7 +129,7 @@ function buildDeezerCDNUrl(md5Origin: string, trackId: string, token: string | u
     // Deezer CDN URL format
     // The token is needed for authenticated streams
     const baseHost = 'e-cdns-proxy-' + (Math.floor(Math.random() * 5) + 1) + '.dzcdn.net';
-    let url = `https://${baseHost}/mobile/1/${md5Origin}`;
+    const url = `https://${baseHost}/mobile/1/${md5Origin}`;
     
     const params = new URLSearchParams();
     params.append('track_id', trackId);

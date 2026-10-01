@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDeezerTrackInfo, checkDeezerTrackAvailability } from '@/lib/deezer-dl-server';
+import { getDeezerTrackInfo, getDeezerDownloadURL, checkDeezerTrackAvailability } from '@/lib/deezer-dl-server';
 import z from 'zod';
 
 // Parameters schema
@@ -11,7 +11,7 @@ export const downloadParamsSchema = z.object({
 // Response schema
 export const downloadResponseSchema = z.object({
     success: z.boolean().optional(),
-    data: z.union(
+    data: z.union([
         z.object({
             url: z.string(),
             quality: z.number()
@@ -21,7 +21,7 @@ export const downloadResponseSchema = z.object({
             quality: z.number(),
             url: z.string()
         }))
-    )
+    ])
 });
 
 export async function GET(request: NextRequest) {
@@ -57,23 +57,7 @@ export async function GET(request: NextRequest) {
         }
         
         // Build download URL based on quality
-        const qualityMap = {
-            '5': 1,   // MP3 128
-            '7': 3,   // MP3 320
-            '6': 9,   // FLAC
-            '27': 9   // FLAC
-        };
-        const qualityLevel = qualityMap[quality];
-        
-        // Determine best quality available
-        let bestQuality = quality;
-        if (qualityLevel === 9 && trackInfo.available_qualities.flac) {
-            bestQuality = 9;
-        } else if (qualityLevel === 3 && trackInfo.available_qualities.mp3_320) {
-            bestQuality = 3;
-        }
-        
-        const downloadUrl = await getDeezerDownloadURL(track_id, bestQuality);
+        const downloadUrl = await getDeezerDownloadURL(track_id, quality);
         
         if (!downloadUrl) {
             return new NextResponse(
@@ -90,7 +74,7 @@ export async function GET(request: NextRequest) {
                 success: true,
                 data: {
                     url: downloadUrl,
-                    quality: bestQuality,
+                    quality: Number(quality),
                     track_id: track_id,
                     title: trackInfo.title
                 }
