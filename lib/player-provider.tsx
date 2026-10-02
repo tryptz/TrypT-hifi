@@ -72,8 +72,12 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         localStorage.setItem('playerVolume', String(volume));
     }, [volume]);
 
+    const next = useCallback(() => {
+        setIndex((i) => (i + 1 < queue.length ? i + 1 : i));
+    }, [queue.length]);
+
     const loadTrack = useCallback(
-        async (track: QobuzTrack, quality: string) => {
+        async (track: QobuzTrack, quality: string, skip: () => void) => {
             const audio = audioRef.current;
             if (!audio) return;
             const token = ++loadToken.current;
@@ -92,20 +96,30 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 await audio.play();
             } catch (error) {
                 if (token !== loadToken.current) return;
+                // Stale/nonexistent Deezer ids 404 here — skip to the next track instead of
+                // stranding the queue on a dead entry. Axios surfaces the status on the error.
+                const status = (error as any)?.response?.status;
+                if (status === 404) {
+                    console.warn('Skipping unavailable track', (error as any)?.config?.params?.track_id);
+                    setPlaying(false);
+                    setLoading(false);
+                    next();
+                    return;
+                }
                 // play() rejects with NotAllowedError when autoplay is blocked; leave the track loaded and paused.
                 if ((error as DOMException)?.name !== 'NotAllowedError') console.error('Failed to stream track', error);
                 setPlaying(false);
                 setLoading(false);
             }
         },
-        [country]
+        [country, next]
     );
 
     // Whenever the current track changes, fetch its stream URL and start playing.
     useEffect(() => {
         if (!current) return;
         usedFallback.current = false;
-        loadTrack(current, STREAM_QUALITY);
+        loadTrack(current, STREAM_QUALITY, next);
     }, [current?.id, index, queue]);
 
     const playTracks = useCallback((tracks: QobuzTrack[], startIndex = 0) => {
@@ -133,10 +147,6 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         if (audio.paused) audio.play().catch(() => setPlaying(false));
         else audio.pause();
     }, [current]);
-
-    const next = useCallback(() => {
-        setIndex((i) => (i + 1 < queue.length ? i + 1 : i));
-    }, [queue.length]);
 
     const previous = useCallback(() => {
         const audio = audioRef.current;
@@ -182,7 +192,7 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         if (!current || !audioRef.current?.getAttribute('src')) return;
         if (!usedFallback.current && !isDeezerItem(current)) {
             usedFallback.current = true;
-            loadTrack(current, FALLBACK_QUALITY);
+            loadTrack(current, FALLBACK_QUALITY, next);
             return;
         }
         setLoading(false);
