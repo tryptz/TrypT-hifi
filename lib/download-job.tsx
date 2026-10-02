@@ -11,10 +11,12 @@ import { StatusBarProps } from '@/components/status-bar/status-bar';
 import { ToastAction } from '@/components/ui/toast';
 import { zipSync } from 'fflate';
 import { isTidalAtmos, isTidalItem } from './tidal';
+import { isDeezerItem } from './deezer';
 
 // TIDAL releases download through /api/tidal/*, which mirrors the Qobuz routes
 // (same quality ids, same signed-link response), so only the base path differs.
-const apiBaseFor = (item: QobuzAlbum | QobuzTrack) => (isTidalItem(item) ? '/api/tidal' : '/api');
+// Deezer tracks download through /api/deezer/* the same way.
+const apiBaseFor = (item: QobuzAlbum | QobuzTrack) => (isTidalItem(item) ? '/api/tidal' : isDeezerItem(item) ? '/api/deezer' : '/api');
 
 // Resolves a track's file URL. With "Prefer Dolby Atmos" on, TIDAL tracks that have
 // an Atmos mix try the Atmos file first and fall back to the stereo quality when

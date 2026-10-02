@@ -83,7 +83,8 @@ const ReleaseCard = ({
     // audio is DRM-encrypted and handed off to the native app instead.
     const sourceCanStream = source === 'qobuz' || source === 'deezer' || source === 'tidal';
     const canStream = sourceCanStream && getType(result) !== 'artists' && (result as QobuzAlbum | QobuzTrack).streamable !== false;
-    // Deezer has no downloads; its cards link out to the release on deezer.com instead.
+    // Deezer has full-length downloads via its ARL session, so its cards get a real
+    // download button; Apple gets the Tryptify handoff; Qobuz/TIDAL get the ZIP dropdown.
     const deezerLink = (result as { deezer?: DeezerExtras }).deezer?.link;
 
     const playResult = async () => {
@@ -160,14 +161,12 @@ const ReleaseCard = ({
                         </div>
                         {!(getType(result) === 'artists') && (
                             <div className='flex items-center justify-between gap-4 p-2'>
-                                {source === 'deezer' ? (
-                                    deezerLink && (
-                                        <Button size='icon' variant='ghost' title='Open in Deezer' asChild>
-                                            <a href={deezerLink} target='_blank' rel='noopener noreferrer'>
-                                                <ExternalLinkIcon />
-                                            </a>
-                                        </Button>
-                                    )
+                                {source === 'apple' && deezerLink ? (
+                                    <Button size='icon' variant='ghost' title='Open in Apple Music' asChild>
+                                        <a href={deezerLink} target='_blank' rel='noopener noreferrer'>
+                                            <ExternalLinkIcon />
+                                        </a>
+                                    </Button>
                                 ) : (result as QobuzTrack).album ? (
                                     <Button
                                         size='icon'
@@ -443,7 +442,7 @@ const ReleaseCard = ({
                                                             <PlayIcon className='!size-4' />
                                                         </Button>
                                                     )}
-                                                    {track.streamable && source !== 'deezer' && (
+                                                    {track.streamable && (
                                                         <Button
                                                             title={`Download '${formatTitle(track)}'`}
                                                             className='md:group-hover:flex md:hidden justify-center aspect-square h-6 w-6 [&_svg]:size-5 hover:bg-transparent'

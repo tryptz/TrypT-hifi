@@ -29,12 +29,16 @@ export async function GET(request: NextRequest) {
             return new NextResponse(JSON.stringify({ success: true, data: { url } }), { status: 200 });
         }
     } catch (error: any) {
+        const notFound = error?.response?.status === 404 || error?.statusCode === 404;
+        const message = error?.response?.status
+            ? `Deezer has no track with ID ${error?.config?.url?.split('/').pop() || 'requested'} (HTTP ${error.response.status}).`
+            : error?.errors || error.message || 'An error occurred parsing the request.';
         return new NextResponse(
             JSON.stringify({
                 success: false,
-                error: error?.errors || error.message || 'An error occurred parsing the request.'
+                error: notFound ? 'Track not found on Deezer.' : message
             }),
-            { status: 400 }
+            { status: notFound ? 404 : 400 }
         );
     }
 }
