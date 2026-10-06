@@ -103,7 +103,7 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                     console.warn('Skipping unavailable track', (error as any)?.config?.params?.track_id);
                     setPlaying(false);
                     setLoading(false);
-                    next();
+                    skip();
                     return;
                 }
                 // play() rejects with NotAllowedError when autoplay is blocked; leave the track loaded and paused.
@@ -112,7 +112,7 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 setLoading(false);
             }
         },
-        [country, next]
+        [country]
     );
 
     // Whenever the current track changes, fetch its stream URL and start playing.
