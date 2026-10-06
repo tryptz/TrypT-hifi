@@ -112,9 +112,7 @@ export async function resolveStream(trackId: string, qualityId: string): Promise
         if (manifest?.kind === 'file') return { kind: 'file', url: manifest.url };
         if (manifest?.kind === 'dash') {
             const quality = deliveredQuality(data, requested);
-            await describeDash(streamKey(trackId, quality), streamFormat(quality).ext, async () =>
-                dashPlan(manifest.mpd, quality, aacTags(trackId, quality))
-            );
+            await describeDash(streamKey(trackId, quality), streamFormat(quality).ext, async () => dashPlan(manifest.mpd, quality, aacTags(trackId, quality)));
             return { kind: 'dash', quality };
         }
     } catch (error) {

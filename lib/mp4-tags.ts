@@ -153,7 +153,11 @@ export async function tidalTrackTags(trackId: string, comment?: string): Promise
         if (!track?.title) return null;
         const albumId = track.album?.id;
         const [album, cover] = await Promise.all([
-            albumId ? tidalRequest('/album/', { id: albumId, limit: 1 }).then(unwrap).catch(() => null) : null,
+            albumId
+                ? tidalRequest('/album/', { id: albumId, limit: 1 })
+                      .then(unwrap)
+                      .catch(() => null)
+                : null,
             track.album?.cover
                 ? axios
                       .get(coverURL(track.album.cover), { responseType: 'arraybuffer', httpAgent: proxyAgent(), httpsAgent: proxyAgent() })

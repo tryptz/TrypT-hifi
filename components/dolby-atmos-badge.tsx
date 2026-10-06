@@ -6,6 +6,13 @@ import { cn } from '@/lib/utils';
 const DOLBY_MARK_PATH =
     'M0 3.564v16.872h2.488c4.648 0 8.438-3.788 8.438-8.436s-3.79-8.436-8.438-8.436H0zm21.512 0c-4.648 0-8.438 3.788-8.438 8.436s3.79 8.436 8.438 8.436H24V3.564h-2.488z';
 
+/** The Dolby mark on its own, as an icon (e.g. the "Dolby Atmos (.m4a)" download). */
+export const DolbyMark = ({ className }: { className?: string }) => (
+    <svg viewBox='0 3.564 24 16.872' className={cn('fill-current shrink-0', className)} aria-hidden='true'>
+        <path d={DOLBY_MARK_PATH} />
+    </svg>
+);
+
 /** Badge for TIDAL releases and tracks with a Dolby Atmos (E-AC-3 JOC) mix. */
 const DolbyAtmosBadge = ({ className }: { className?: string }) => (
     <p

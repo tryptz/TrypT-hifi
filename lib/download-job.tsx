@@ -18,17 +18,30 @@ import { isDeezerItem } from './deezer';
 // Deezer tracks download through /api/deezer/* the same way.
 const apiBaseFor = (item: QobuzAlbum | QobuzTrack) => (isTidalItem(item) ? '/api/tidal' : isDeezerItem(item) ? '/api/deezer' : '/api');
 
+export type DownloadOptions = {
+    // "Dolby Atmos (.m4a)": TIDAL tracks with an Atmos mix download that mix or
+    // fail saying why, never the stereo file in its place. Tracks without one
+    // (on an Atmos album) download in the stereo settings.
+    atmos?: boolean;
+};
+
+// The server's own reason for a failed request ({ success: false, error }).
+const serverError = (e: unknown) =>
+    (e instanceof AxiosError && typeof e.response?.data?.error === 'string' && e.response.data.error) || (e instanceof Error ? e.message : String(e));
+
 // Resolves a track's file URL. With "Prefer Dolby Atmos" on, TIDAL tracks that have
 // an Atmos mix try the Atmos file first and fall back to the stereo quality when
-// TIDAL won't serve it (e.g. DRM-protected). Atmos files are E-AC-3 JOC .m4a and
-// must be saved untouched: re-encoding or remuxing would lose the Atmos data.
-async function resolveTrackURL(track: QobuzTrack, settings: SettingsProps, country: string | undefined, signal: AbortSignal) {
-    if (settings.tidalAtmos && isTidalAtmos(track)) {
+// TIDAL won't serve it (e.g. DRM-protected); asked for outright (forceAtmos) they
+// do not fall back. Atmos files are E-AC-3 JOC .m4a and must be saved untouched:
+// re-encoding or remuxing would lose the Atmos data.
+async function resolveTrackURL(track: QobuzTrack, settings: SettingsProps, country: string | undefined, signal: AbortSignal, forceAtmos = false) {
+    if ((forceAtmos || settings.tidalAtmos) && isTidalAtmos(track)) {
         try {
             const response = await axios.get('/api/tidal/download-music', { params: { track_id: track.id, atmos: 'true' }, signal });
             return { url: response.data.data.url as string, atmos: true };
         } catch (e) {
             if (e instanceof AxiosError && e.code === 'ERR_CANCELED') throw e;
+            if (forceAtmos) throw new Error(`No Dolby Atmos file for "${formatTitle(track)}": ${serverError(e)}`);
         }
     }
     const response = await axios.get(`${apiBaseFor(track)}/download-music`, {
@@ -49,7 +62,8 @@ export const createDownloadJob = async (
     toast: (toast: any) => void,
     fetchedAlbumData?: FetchedQobuzAlbum | null,
     setFetchedAlbumData?: React.Dispatch<React.SetStateAction<FetchedQobuzAlbum | null>>,
-    country?: string
+    country?: string,
+    options: DownloadOptions = {}
 ) => {
     if ((result as QobuzTrack).album) {
         const formattedTitle = formatCustomTitle(settings.trackName, result as QobuzTrack);
@@ -69,13 +83,19 @@ export const createDownloadJob = async (
                             controller.abort();
                         }
                     }));
+                    // An Atmos file is saved untouched, so it needs no FFmpeg.
+                    const atmosOnly = options.atmos && isTidalAtmos(result);
                     if (
-                        settings.applyMetadata ||
-                        !((settings.outputQuality === '27' && settings.outputCodec === 'FLAC') || (settings.bitrate === 320 && settings.outputCodec === 'MP3'))
+                        !atmosOnly &&
+                        (settings.applyMetadata ||
+                            !(
+                                (settings.outputQuality === '27' && settings.outputCodec === 'FLAC') ||
+                                (settings.bitrate === 320 && settings.outputCodec === 'MP3')
+                            ))
                     )
                         await loadFFmpeg(ffmpegState);
                     setStatusBar((prev) => ({ ...prev, description: 'Fetching track size...' }));
-                    const { url: trackURL, atmos } = await resolveTrackURL(result as QobuzTrack, settings, country, signal);
+                    const { url: trackURL, atmos } = await resolveTrackURL(result as QobuzTrack, settings, country, signal, options.atmos);
                     const fileSizeResponse = await axios.head(trackURL, { signal });
                     const fileSize = fileSizeResponse.headers['content-length'];
                     const response = await axios.get(trackURL, {
@@ -200,7 +220,7 @@ export const createDownloadJob = async (
                     for (let index = 0; index < albumTracks.length; index++) {
                         const track = albumTracks[index];
                         if (track.streamable) {
-                            const { url: trackURL, atmos } = await resolveTrackURL(track, settings, country, signal);
+                            const { url: trackURL, atmos } = await resolveTrackURL(track, settings, country, signal, options.atmos);
                             let slot: number;
                             if (!(currentDisk === track.media_number)) {
                                 trackOffset = albumUrls.length;
