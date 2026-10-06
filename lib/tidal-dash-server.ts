@@ -176,7 +176,9 @@ export function planFromMPD(mpd: string, mpdUrl: string, accept: { codecs: RegEx
 // --- Assembly -------------------------------------------------------------------
 
 // Rewrites segment `index` (0 = the init segment when the plan has one) on its way into the file.
-export type SegmentTransform = (index: number, data: Buffer) => Buffer;
+// May be async: tagging the init segment waits for the track's tags, which are
+// fetched alongside the manifest rather than before it.
+export type SegmentTransform = (index: number, data: Buffer) => Buffer | Promise<Buffer>;
 
 // What a build needs: the segment URLs, a description saved beside the file, and an optional transform.
 export type BuildPlan<I> = { urls: string[]; info: I; transform?: SegmentTransform };
@@ -217,7 +219,7 @@ export class DashBuild<I = unknown> extends EventEmitter {
                     const index = next++;
                     const response = await axios.get(urls[index], { responseType: 'arraybuffer', httpAgent: agent, httpsAgent: agent });
                     const data = Buffer.from(response.data);
-                    this.parts[index] = transform ? transform(index, data) : data;
+                    this.parts[index] = transform ? await transform(index, data) : data;
                     while (this.ready < this.total && this.parts[this.ready]) this.ready++;
                     this.emit('progress');
                 }

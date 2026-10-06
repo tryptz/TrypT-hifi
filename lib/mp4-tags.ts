@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { tidalRequest } from './tidal-server';
-import { proxyAgent } from './tidal-dash-server';
+import { proxyAgent, SegmentTransform } from './tidal-dash-server';
 
 // ---------------------------------------------------------------------------
 // iTunes-style tags (moov > udta > meta > ilst) for the fragmented MP4s this
@@ -121,6 +121,20 @@ export function withMp4Tags(init: Buffer, tags: Mp4Tags): Buffer {
     );
     return Buffer.concat([init.subarray(0, moov.start), newMoov, init.subarray(moov.end)]);
 }
+
+/**
+ * A DASH segment transform that tags the init segment (index 0) once [tags]
+ * arrive and passes every other segment through. Taking the tags as a promise
+ * lets a build start, and the server answer, while they are still being
+ * fetched; only storing segment 0 waits for them. Null tags leave it as is.
+ */
+export const tagInitSegment =
+    (tags: Promise<Mp4Tags | null>): SegmentTransform =>
+    async (index, data) => {
+        if (index !== 0) return data;
+        const found = await tags;
+        return found ? withMp4Tags(data, found) : data;
+    };
 
 // --- Tags for a TIDAL track -----------------------------------------------------
 
