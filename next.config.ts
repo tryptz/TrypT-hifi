@@ -2,6 +2,11 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
     output: "standalone",
+    // The HiFi API routes (app/search/route.ts, ...) are called the way
+    // hifi-api spells them, with a trailing slash (/search/?s=...). Next's
+    // default 308s that to /search first, a wasted round trip on every TIDAL
+    // request Tryptify makes; both spellings reach the same handler without it.
+    skipTrailingSlashRedirect: true,
     images: {
         remotePatterns: [
             {
