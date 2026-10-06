@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { tidalRequest } from './tidal-server';
 import { BuildPlan, attr, dashFile, describeDash, numberAttr, openDash, openTag, planFromMPD as planDash, proxyAgent } from './tidal-dash-server';
+import { tidalTrackTags, withMp4Tags } from './mp4-tags';
 
 // ---------------------------------------------------------------------------
 // Server-only TIDAL Dolby Atmos (E-AC-3 JOC) files. Do NOT import into the client.
@@ -78,10 +79,10 @@ function dolbyProperty(scopes: string[], scheme: RegExp): string | null {
     return null;
 }
 
-export type AtmosPlan = { urls: string[]; info: AtmosStreamInfo };
+export type AtmosPlan = { urls: string[]; info: AtmosStreamInfo; initialization: boolean };
 
 export function planFromMPD(mpd: string, mpdUrl: string): AtmosPlan {
-    const { urls, representation } = planDash(mpd, mpdUrl, ATMOS);
+    const { urls, representation, initialization } = planDash(mpd, mpdUrl, ATMOS);
     const { rep, set, setOwn, codecs, bandwidth } = representation;
     const scopes = [rep, setOwn];
     const channelConfiguration = dolbyProperty(scopes, /audio_channel_configuration/i);
@@ -95,7 +96,7 @@ export function planFromMPD(mpd: string, mpdUrl: string): AtmosPlan {
         extensionType: dolbyProperty(scopes, /EC3_ExtensionType/i),
         objectCount: Number.isFinite(complexity) && complexity > 0 ? complexity : null
     };
-    return { urls, info };
+    return { urls, info, initialization };
 }
 
 // Kept for the original single-representation callers/tests.
@@ -103,14 +104,23 @@ export const segmentURLsFromMPD = (mpd: string, mpdUrl: string) => planFromMPD(m
 
 // --- Files ----------------------------------------------------------------------
 
-const atmosKey = (trackId: string) => `atmos-${trackId}`;
+// "t1": Atmos files carry tags since; untagged ones built before are not reused.
+const atmosKey = (trackId: string) => `atmos-t1-${trackId}`;
 
 function atmosPlan(trackId: string) {
     return async (): Promise<BuildPlan<AtmosStreamInfo>> => {
-        const mpdUrl = await fetchAtmosManifestURL(trackId);
+        // The tags are fetched alongside the manifest, so a track with no Atmos
+        // mix still fails as fast as before. The file's tags say it is Atmos:
+        // the audio is passed through untouched, only its init segment grows.
+        const [mpdUrl, tags] = await Promise.all([fetchAtmosManifestURL(trackId), tidalTrackTags(trackId, 'Dolby Atmos')]);
         const agent = proxyAgent();
         const mpd = (await axios.get(mpdUrl, { responseType: 'text', httpAgent: agent, httpsAgent: agent })).data as string;
-        return planFromMPD(mpd, mpdUrl);
+        const { urls, info, initialization } = planFromMPD(mpd, mpdUrl);
+        return {
+            urls,
+            info,
+            transform: tags && initialization ? (index, data) => (index === 0 ? withMp4Tags(data, tags) : data) : undefined
+        };
     };
 }
 
