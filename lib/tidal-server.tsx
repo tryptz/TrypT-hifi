@@ -26,8 +26,8 @@ import { HifiError, hifiApi, nativeTidalConfigured } from './tidal-native-server
 //     Requests start on a random instance and fail over on 429 / 5xx / HTML responses.
 //   - Instances wrap payloads as { version, data }; unwrap() strips that so the
 //     normalizers see the bare TIDAL resource either way.
-//   - Stream manifests are decoded here so the routes can hand the browser a
-//     signed /api/file link, exactly like the Qobuz download route.
+//   - Stream manifests are decoded in lib/tidal-stream-server.ts (stereo) and
+//     lib/tidal-atmos-server.ts (Dolby Atmos).
 // ---------------------------------------------------------------------------
 
 let SocksProxyAgent: any;
@@ -39,16 +39,6 @@ if (typeof window === 'undefined') {
 // Upper bound on album tracklists / discographies we page through.
 const MAX_ITEMS = 500;
 const PAGE_SIZE = 100;
-
-// Qobuz quality ids (what the settings + download pipeline speak) -> TIDAL qualities.
-// HI_RES_LOSSLESS may come back as a DASH manifest, which can't be proxied as one
-// file, so getStreamURL() retries it as LOSSLESS (16/44.1 FLAC).
-const QUALITY_MAP: Record<string, string> = {
-    '27': 'HI_RES_LOSSLESS',
-    '7': 'HI_RES_LOSSLESS',
-    '6': 'LOSSLESS',
-    '5': 'HIGH'
-};
 
 function instances(): string[] {
     const list = (process.env.TIDAL_API_BASE || '')
@@ -253,30 +243,4 @@ export async function getArtistReleases(
         items: matching.slice(offset, offset + limit).map((album) => normalizeTidalAlbum(album, artist)),
         has_more: offset + limit < matching.length
     };
-}
-
-// --- Streams ---------------------------------------------------------------
-
-// A manifest is base64 of either BTS JSON ({ mimeType, encryptionType, urls }) or
-// a DASH MPD. Only unencrypted single-file (BTS) manifests can be proxied.
-function directURLFromManifest(manifest: string | undefined, mimeType: string | undefined): string | null {
-    if (!manifest) return null;
-    const decoded = Buffer.from(manifest, 'base64').toString('utf8');
-    if (mimeType === 'application/dash+xml' || decoded.includes('<MPD')) return null;
-    try {
-        const json = JSON.parse(decoded) as { urls?: string[]; encryptionType?: string };
-        if (json.encryptionType && json.encryptionType !== 'NONE') return null;
-        return json.urls?.[0] || null;
-    } catch {
-        return decoded.match(/https?:\/\/\S+/)?.[0] || null;
-    }
-}
-
-// Stream links are short-lived signed CDN URLs, so always fetch a fresh one.
-export async function getStreamURL(track_id: string, quality: string, options: APIOptionProps = {}): Promise<string | null> {
-    const tidalQuality = QUALITY_MAP[quality] || 'LOSSLESS';
-    const data = unwrap(await tidalRequest('/track/', { id: track_id, quality: tidalQuality }, options));
-    const url = directURLFromManifest(data?.manifest, data?.manifestMimeType);
-    if (url || tidalQuality !== 'HI_RES_LOSSLESS') return url;
-    return getStreamURL(track_id, '6', options);
 }

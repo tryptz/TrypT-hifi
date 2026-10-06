@@ -135,7 +135,7 @@ TIDAL_API_BASE=https://your-hifi-instance.example.com
 # TIDAL_API_BASE=https://a.example.com,https://b.example.com
 ```
 
-With either set you can search TIDAL (or paste `tidal.com` album/track/artist links), stream full tracks in the browser, and download tracks and albums through the regular download pipeline. The quality setting maps to TIDAL qualities: Hi-Res → `HI_RES_LOSSLESS` (falls back to 16-bit `LOSSLESS` when the instance only offers a DASH stream), CD → `LOSSLESS`, MP3 320 → `HIGH` (AAC 320).
+With either set you can search TIDAL (or paste `tidal.com` album/track/artist links), stream full tracks in the browser, and download tracks and albums through the regular download pipeline. The quality setting maps to TIDAL qualities: Hi-Res → `HI_RES_LOSSLESS` (24-bit FLAC where TIDAL has a hi-res master), CD → `LOSSLESS`, MP3 320 → `HIGH` (AAC 320). When TIDAL delivers a track as DASH segments instead of one file (some accounts get DASH for every quality), trypt-hifi assembles it server-side and serves it from `/api/tidal/stream-file`: FLAC is remuxed losslessly into a plain `.flac`, AAC stays `.m4a`.
 
 **Dolby Atmos:** releases with an Atmos mix get an `ATMOS` badge. Turn on *Prefer Dolby Atmos* in settings (shown while TIDAL is the active source) to download those tracks as the original E-AC-3 JOC `.m4a`, fetched through the instance's `/trackManifests/` endpoint and assembled from its DASH segments server-side. Atmos files are passed through byte-for-byte (no re-encode, no tags) so players still see them as Atmos; tracks without an Atmos mix, or whose Atmos stream TIDAL serves DRM-protected, fall back to the stereo quality. In-browser playback stays stereo, since most browsers can't decode E-AC-3.
 
