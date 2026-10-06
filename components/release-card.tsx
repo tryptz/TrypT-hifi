@@ -1,5 +1,6 @@
 import ArtistDialog from './artist-dialog';
 import SourceTag from './source-tag';
+import DolbyAtmosBadge from './dolby-atmos-badge';
 import DownloadAlbumButton from './download-album-button';
 import Image from 'next/image';
 import React, { useEffect, useState } from 'react';
@@ -311,14 +312,7 @@ const ReleaseCard = ({
                             THX
                         </p>
                     )}
-                    {isTidalAtmos(result) && (
-                        <p
-                            className='text-[10px] bg-primary text-primary-foreground p-1 rounded-[3px] h-[18px] text-center justify-center items-center shrink-0 flex font-semibold'
-                            title='Dolby Atmos'
-                        >
-                            ATMOS
-                        </p>
-                    )}
+                    {isTidalAtmos(result) && <DolbyAtmosBadge />}
                     <h1 className='text-sm truncate font-bold group-hover:underline'>{formatTitle(result)}</h1>
                 </div>
                 {!(getType(result) === 'artists') && (
@@ -421,14 +415,7 @@ const ReleaseCard = ({
                                                                 THX
                                                             </p>
                                                         )}
-                                                        {isTidalAtmos(track) && (
-                                                            <p
-                                                                className='text-[10px] bg-primary text-primary-foreground p-1 rounded-[3px] h-[18px] shrink-0 text-center justify-center items-center flex font-semibold'
-                                                                title='Dolby Atmos'
-                                                            >
-                                                                ATMOS
-                                                            </p>
-                                                        )}
+                                                        {isTidalAtmos(track) && <DolbyAtmosBadge />}
                                                         <p className='truncate font-medium'>{formatTitle(track)}</p>
                                                     </div>
                                                     {track.streamable && sourceCanStream && (

@@ -72,8 +72,18 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // --- Session ---------------------------------------------------------------
 
-let session: { accessToken: string; issuedAt: number; expiresAt: number } | null = null;
-let refreshing: Promise<string> | null = null;
+// Next.js bundles each route separately, so module state isn't shared between
+// routes; globalThis is, so every route uses one login (as in lib/tidal-atmos-server.ts).
+type SessionState = {
+    session: { accessToken: string; issuedAt: number; expiresAt: number } | null;
+    refreshing: Promise<string> | null;
+    countryCode: Promise<string> | null;
+};
+const state = ((globalThis as typeof globalThis & { __tidalNativeSession?: SessionState }).__tidalNativeSession ??= {
+    session: null,
+    refreshing: null,
+    countryCode: null
+});
 
 async function refreshAccessToken(): Promise<string> {
     if (!nativeTidalConfigured()) throw new HifiError(503, 'TIDAL is not configured: set TIDAL_CLIENT_ID, TIDAL_CLIENT_SECRET and TIDAL_REFRESH_TOKEN.');
@@ -98,17 +108,17 @@ async function refreshAccessToken(): Promise<string> {
     }
     // Renew a minute early so a token never expires mid-request.
     const now = Date.now();
-    session = { accessToken: response.data.access_token, issuedAt: now, expiresAt: now + ((Number(response.data.expires_in) || 3600) - 60) * 1000 };
-    return session.accessToken;
+    state.session = { accessToken: response.data.access_token, issuedAt: now, expiresAt: now + ((Number(response.data.expires_in) || 3600) - 60) * 1000 };
+    return state.session.accessToken;
 }
 
 async function accessToken(forceRefresh = false): Promise<string> {
-    if (!forceRefresh && session && Date.now() < session.expiresAt) return session.accessToken;
+    if (!forceRefresh && state.session && Date.now() < state.session.expiresAt) return state.session.accessToken;
     // Concurrent requests share one in-flight refresh instead of each logging in.
-    refreshing ??= refreshAccessToken().finally(() => {
-        refreshing = null;
+    state.refreshing ??= refreshAccessToken().finally(() => {
+        state.refreshing = null;
     });
-    return refreshing;
+    return state.refreshing;
 }
 
 // --- Requests --------------------------------------------------------------
@@ -152,7 +162,7 @@ async function tidalGet(url: string, params: Params = {}): Promise<any> {
             throw new HifiError(503, 'Connection error to Tidal');
         }
 
-        const staleToken = response.status === 404 && session !== null && Date.now() - session.issuedAt > STALE_TOKEN_MS;
+        const staleToken = response.status === 404 && state.session !== null && Date.now() - state.session.issuedAt > STALE_TOKEN_MS;
         if ((response.status === 401 || staleToken) && !refreshed) {
             refreshed = true;
             token = await accessToken(true);
@@ -174,17 +184,16 @@ async function tidalGet(url: string, params: Params = {}): Promise<any> {
 }
 
 // The account's own country; TIDAL region-locks by account, so it is the right default.
-let countryCode: Promise<string> | null = null;
 function country(): Promise<string> {
     if (process.env.TIDAL_COUNTRY_CODE) return Promise.resolve(process.env.TIDAL_COUNTRY_CODE);
-    countryCode ??= tidalGet(`${API_V1}/sessions`)
+    state.countryCode ??= tidalGet(`${API_V1}/sessions`)
         .then((s) => (typeof s?.countryCode === 'string' && s.countryCode) || 'US')
         .catch((error) => {
             // Don't cache a failure (e.g. a bad token): the next request tries again.
-            countryCode = null;
+            state.countryCode = null;
             throw error;
         });
-    return countryCode;
+    return state.countryCode;
 }
 
 const wrap = (data: unknown) => ({ version: HIFI_API_VERSION, data });
