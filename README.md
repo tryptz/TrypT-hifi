@@ -111,7 +111,23 @@ The Deezer downloader can fetch full-length tracks in MP3 128/320 and FLAC (HiFi
 
 #### TIDAL Integration (Optional)
 
-TIDAL is available as a fourth source (the source button cycles Qobuz → Apple Music → Deezer → TIDAL). It talks to a HiFi API instance, the same backend Tryptify's "Tidal HiFi URL" setting uses:
+TIDAL is available as a fourth source (the source button cycles Qobuz → Apple Music → Deezer → TIDAL). It needs a HiFi API, and there are two ways to give it one.
+
+**Option A — your own TIDAL account (recommended).** trypt-hifi logs in to TIDAL itself and *is* the HiFi API: besides powering its own TIDAL source, it answers the HiFi API routes at the site root (`/search/`, `/info/`, `/track/`, `/trackManifests/`, `/album/`, `/artist/`, `/artist/similar/`, `/playlist/`, `/lyrics/`, `/recommendations/`), so Tryptify can add this site under Settings → Connections and detect it as a TIDAL server.
+
+```env
+TIDAL_CLIENT_ID=...
+TIDAL_CLIENT_SECRET=...
+TIDAL_REFRESH_TOKEN=...
+# TIDAL_COUNTRY_CODE=US   # optional; detected from the account when unset
+```
+
+To get these, run [hifi-api](https://github.com/binimum/hifi-api)'s `tidal_auth/tidal_auth.py` (`pip install -r tidal_auth/requirements.txt`, then run it and approve the login link with a TIDAL account that has a subscription). Copy `client_ID`, `client_secret` and `refresh_token` from the `token.json` it writes. trypt-hifi swaps the refresh token for short-lived access tokens on its own; if TIDAL ever revokes it, the TIDAL routes answer `TIDAL login failed` and you re-run the script.
+
+> [!WARNING]
+> Anyone who can reach your site can stream and download through this account, which TIDAL's terms don't allow and can get the account banned. Keep the deployment private (e.g. behind Cloudflare Access) if it's reachable from the internet.
+
+**Option B — an external HiFi API instance**, the same backend Tryptify's "Tidal HiFi URL" setting uses. Used only when Option A isn't configured:
 
 ```env
 TIDAL_API_BASE=https://your-hifi-instance.example.com
@@ -119,7 +135,7 @@ TIDAL_API_BASE=https://your-hifi-instance.example.com
 # TIDAL_API_BASE=https://a.example.com,https://b.example.com
 ```
 
-With it set you can search TIDAL (or paste `tidal.com` album/track/artist links), stream full tracks in the browser, and download tracks and albums through the regular download pipeline. The quality setting maps to TIDAL qualities: Hi-Res → `HI_RES_LOSSLESS` (falls back to 16-bit `LOSSLESS` when the instance only offers a DASH stream), CD → `LOSSLESS`, MP3 320 → `HIGH` (AAC 320).
+With either set you can search TIDAL (or paste `tidal.com` album/track/artist links), stream full tracks in the browser, and download tracks and albums through the regular download pipeline. The quality setting maps to TIDAL qualities: Hi-Res → `HI_RES_LOSSLESS` (24-bit FLAC where TIDAL has a hi-res master), CD → `LOSSLESS`, MP3 320 → `HIGH` (AAC 320). When TIDAL delivers a track as DASH segments instead of one file (some accounts get DASH for every quality), trypt-hifi assembles it server-side and serves it from `/api/tidal/stream-file`: FLAC is remuxed losslessly into a plain `.flac`, AAC stays `.m4a`.
 
 **Dolby Atmos:** releases with an Atmos mix get an `ATMOS` badge. Turn on *Prefer Dolby Atmos* in settings (shown while TIDAL is the active source) to download those tracks as the original E-AC-3 JOC `.m4a`, fetched through the instance's `/trackManifests/` endpoint and assembled from its DASH segments server-side. Atmos files are passed through byte-for-byte (no re-encode, no tags) so players still see them as Atmos; tracks without an Atmos mix, or whose Atmos stream TIDAL serves DRM-protected, fall back to the stereo quality. In-browser playback stays stereo, since most browsers can't decode E-AC-3.
 

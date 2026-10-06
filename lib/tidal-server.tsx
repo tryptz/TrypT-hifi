@@ -12,19 +12,22 @@ import {
     tidalReleaseBucket
 } from './tidal';
 import { APIOptionProps, FetchedQobuzAlbum, QobuzArtistResults, QobuzSearchResults } from './qobuz-dl';
+import { HifiError, hifiApi, nativeTidalConfigured } from './tidal-native-server';
 
 // ---------------------------------------------------------------------------
-// Server-only TIDAL client, backed by a HiFi API instance.
+// Server-only TIDAL client, backed by a HiFi API.
 //
 // Counterpart to lib/deezer-server.tsx. Do NOT import this into the client.
 //
-//   - TIDAL_API_BASE is one or more HiFi API instance URLs (comma-separated),
-//     the same server Tryptify's "Tidal HiFi URL" setting points at. Requests
-//     start on a random instance and fail over on 429 / 5xx / HTML responses.
+//   - With TIDAL_CLIENT_ID / TIDAL_CLIENT_SECRET / TIDAL_REFRESH_TOKEN set, the
+//     HiFi API is this deployment's own (lib/tidal-native-server.ts), answered
+//     in-process with its TIDAL account. That takes precedence over:
+//   - TIDAL_API_BASE, one or more external HiFi API instance URLs (comma-separated).
+//     Requests start on a random instance and fail over on 429 / 5xx / HTML responses.
 //   - Instances wrap payloads as { version, data }; unwrap() strips that so the
 //     normalizers see the bare TIDAL resource either way.
-//   - Stream manifests are decoded here so the routes can hand the browser a
-//     signed /api/file link, exactly like the Qobuz download route.
+//   - Stream manifests are decoded in lib/tidal-stream-server.ts (stereo) and
+//     lib/tidal-atmos-server.ts (Dolby Atmos).
 // ---------------------------------------------------------------------------
 
 let SocksProxyAgent: any;
@@ -37,22 +40,15 @@ if (typeof window === 'undefined') {
 const MAX_ITEMS = 500;
 const PAGE_SIZE = 100;
 
-// Qobuz quality ids (what the settings + download pipeline speak) -> TIDAL qualities.
-// HI_RES_LOSSLESS may come back as a DASH manifest, which can't be proxied as one
-// file, so getStreamURL() retries it as LOSSLESS (16/44.1 FLAC).
-const QUALITY_MAP: Record<string, string> = {
-    '27': 'HI_RES_LOSSLESS',
-    '7': 'HI_RES_LOSSLESS',
-    '6': 'LOSSLESS',
-    '5': 'HIGH'
-};
-
 function instances(): string[] {
     const list = (process.env.TIDAL_API_BASE || '')
         .split(',')
         .map((url) => url.trim().replace(/\/$/, ''))
         .filter(Boolean);
-    if (list.length === 0) throw new Error('Deployment is missing the TIDAL_API_BASE environment variable (HiFi API instance URL).');
+    if (list.length === 0)
+        throw new Error(
+            'TIDAL is not configured: set TIDAL_CLIENT_ID, TIDAL_CLIENT_SECRET and TIDAL_REFRESH_TOKEN (your own account), or TIDAL_API_BASE (an external HiFi API instance).'
+        );
     return list;
 }
 
@@ -80,9 +76,24 @@ async function getJSON(url: string, agent: unknown, requestOptions: object): Pro
     return { status: response.status, body: JSON.parse(text), retryAfter };
 }
 
+// The deployment's own HiFi API, called in-process: same paths and bodies as over HTTP.
+async function nativeRequest<T>(path: string, params: Record<string, string | number | undefined>): Promise<T> {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined && value !== null) query.append(key, String(value));
+    }
+    try {
+        return (await hifiApi(path, query)) as T;
+    } catch (error) {
+        if (error instanceof HifiError) throw new Error(`TIDAL: ${error.message} (HTTP ${error.status}) for ${path}`);
+        throw error;
+    }
+}
+
 export async function tidalRequest<T = any>(path: string, params: Record<string, string | number | undefined> = {}, options: APIOptionProps = {}): Promise<T> {
     const { country, ...requestOptions } = options;
     void country; // the instance's own TIDAL session decides the region
+    if (nativeTidalConfigured()) return nativeRequest<T>(path, params);
     const bases = instances();
     const agent = proxyAgent();
     const start = Math.floor(Math.random() * bases.length);
@@ -232,30 +243,4 @@ export async function getArtistReleases(
         items: matching.slice(offset, offset + limit).map((album) => normalizeTidalAlbum(album, artist)),
         has_more: offset + limit < matching.length
     };
-}
-
-// --- Streams ---------------------------------------------------------------
-
-// A manifest is base64 of either BTS JSON ({ mimeType, encryptionType, urls }) or
-// a DASH MPD. Only unencrypted single-file (BTS) manifests can be proxied.
-function directURLFromManifest(manifest: string | undefined, mimeType: string | undefined): string | null {
-    if (!manifest) return null;
-    const decoded = Buffer.from(manifest, 'base64').toString('utf8');
-    if (mimeType === 'application/dash+xml' || decoded.includes('<MPD')) return null;
-    try {
-        const json = JSON.parse(decoded) as { urls?: string[]; encryptionType?: string };
-        if (json.encryptionType && json.encryptionType !== 'NONE') return null;
-        return json.urls?.[0] || null;
-    } catch {
-        return decoded.match(/https?:\/\/\S+/)?.[0] || null;
-    }
-}
-
-// Stream links are short-lived signed CDN URLs, so always fetch a fresh one.
-export async function getStreamURL(track_id: string, quality: string, options: APIOptionProps = {}): Promise<string | null> {
-    const tidalQuality = QUALITY_MAP[quality] || 'LOSSLESS';
-    const data = unwrap(await tidalRequest('/track/', { id: track_id, quality: tidalQuality }, options));
-    const url = directURLFromManifest(data?.manifest, data?.manifestMimeType);
-    if (url || tidalQuality !== 'HI_RES_LOSSLESS') return url;
-    return getStreamURL(track_id, '6', options);
 }
