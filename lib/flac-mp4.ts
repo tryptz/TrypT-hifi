@@ -72,7 +72,21 @@ export function flacHeaderFromInit(init: Buffer, duration: { ticks: number; time
             blocks.writeUInt32BE(samples % 2 ** 32, body + 14);
         }
     }
+    markLastMetadataBlock(blocks);
     return Buffer.concat([Buffer.from('fLaC', 'latin1'), blocks]);
+}
+
+// The last metadata block must say so in the top bit of its header, and no
+// other may. A dfLa that leaves it off makes a .flac that players decode
+// (they find the first frame by its sync code) but that tag writers reject:
+// they read the first audio frame, 0xFF..., as one more block of "type 127"
+// and give up, so the download is never tagged.
+function markLastMetadataBlock(blocks: Buffer) {
+    const starts: number[] = [];
+    for (let at = 0; at + 4 <= blocks.length; at += 4 + blocks.readUIntBE(at + 1, 3)) starts.push(at);
+    starts.forEach((start, i) => {
+        blocks[start] = i === starts.length - 1 ? blocks[start] | 0x80 : blocks[start] & 0x7f;
+    });
 }
 
 /** The FLAC frames of one FLAC-in-MP4 media segment (its mdat payloads, in order). */

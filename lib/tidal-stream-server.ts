@@ -1,6 +1,7 @@
 import { tidalRequest } from './tidal-server';
 import { BuildPlan, describeDash, numberAttr, openDash, openTag, planFromMPD } from './tidal-dash-server';
 import { flacFramesFromSegment, flacHeaderFromInit } from './flac-mp4';
+import { Mp4Tags, tidalTrackTags, withMp4Tags } from './mp4-tags';
 
 // ---------------------------------------------------------------------------
 // Server-only TIDAL stereo streams. Do NOT import into the client.
@@ -59,9 +60,10 @@ function decodeManifest(data: any): Manifest {
 const deliveredQuality = (data: any, requested: TidalQuality): TidalQuality =>
     (TIDAL_QUALITIES as readonly string[]).includes(data?.audioQuality) ? data.audioQuality : requested;
 
-const streamKey = (trackId: string, quality: TidalQuality) => `stream-${trackId}-${quality}`;
+// "t1": AAC files carry tags since; untagged ones built before are not reused.
+const streamKey = (trackId: string, quality: TidalQuality) => `stream-t1-${trackId}-${quality}`;
 
-function dashPlan(mpd: string, quality: TidalQuality): BuildPlan<StereoStreamInfo> {
+function dashPlan(mpd: string, quality: TidalQuality, tags: Mp4Tags | null = null): BuildPlan<StereoStreamInfo> {
     const flac = isLossless(quality);
     const plan = planFromMPD(mpd, 'https://tidal.com/', flac ? { codecs: /^flac$/i, name: 'FLAC' } : { codecs: /^mp4a/i, name: 'AAC' });
     if (flac && !plan.initialization) throw new Error('TIDAL sent a FLAC stream without an init segment.');
@@ -70,10 +72,18 @@ function dashPlan(mpd: string, quality: TidalQuality): BuildPlan<StereoStreamInf
         urls: plan.urls,
         info: { codec: codecs, quality, bandwidth: bandwidth || null, sampleRate: numberAttr(openTag(rep), 'audioSamplingRate') },
         // FLAC: the init segment becomes the .flac header, each media segment its frames.
-        // AAC stays fragmented MP4, which browsers and ffmpeg read as-is.
-        transform: flac ? (index, data) => (index === 0 ? flacHeaderFromInit(data, plan.duration) : flacFramesFromSegment(data)) : undefined
+        // AAC stays fragmented MP4, which browsers and ffmpeg read as-is, with the
+        // track's tags in its init segment (lib/mp4-tags.ts).
+        transform: flac
+            ? (index, data) => (index === 0 ? flacHeaderFromInit(data, plan.duration) : flacFramesFromSegment(data))
+            : tags && plan.initialization
+              ? (index, data) => (index === 0 ? withMp4Tags(data, tags) : data)
+              : undefined
     };
 }
+
+// The tags for an AAC (fragmented MP4) file; FLAC is tagged by whoever downloads it.
+const aacTags = (trackId: string, quality: TidalQuality) => (isLossless(quality) ? Promise.resolve(null) : tidalTrackTags(trackId));
 
 // For /api/tidal/stream-file when nothing is cached or building: a fresh manifest for exactly this quality.
 function freshPlan(trackId: string, quality: TidalQuality) {
@@ -81,7 +91,7 @@ function freshPlan(trackId: string, quality: TidalQuality) {
         const data = await playbackInfo(trackId, quality);
         const manifest = decodeManifest(data);
         if (!manifest) throw new Error('TIDAL returned no playable stream for this track.');
-        if (manifest.kind === 'dash') return dashPlan(manifest.mpd, quality);
+        if (manifest.kind === 'dash') return dashPlan(manifest.mpd, quality, await aacTags(trackId, quality));
         return { urls: [manifest.url], info: { codec: manifest.codecs, quality, bandwidth: null, sampleRate: null } };
     };
 }
@@ -102,7 +112,9 @@ export async function resolveStream(trackId: string, qualityId: string): Promise
         if (manifest?.kind === 'file') return { kind: 'file', url: manifest.url };
         if (manifest?.kind === 'dash') {
             const quality = deliveredQuality(data, requested);
-            await describeDash(streamKey(trackId, quality), streamFormat(quality).ext, async () => dashPlan(manifest.mpd, quality));
+            await describeDash(streamKey(trackId, quality), streamFormat(quality).ext, async () =>
+                dashPlan(manifest.mpd, quality, await aacTags(trackId, quality))
+            );
             return { kind: 'dash', quality };
         }
     } catch (error) {
