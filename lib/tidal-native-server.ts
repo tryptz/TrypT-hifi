@@ -345,16 +345,26 @@ async function album(q: Query) {
 
 async function playlist(q: Query) {
     const id = q.required('id');
+    const limit = q.int('limit', 100, 1, 500)!;
+    const offset = q.int('offset', 0, 0)!;
     const countryCode = await country();
-    const [playlistData, itemsData] = await Promise.all([
+    const itemsURL = `${API_V1}/playlists/${encodeURIComponent(id)}/items`;
+    const itemsPage = (start: number, size: number) => tidalGet(itemsURL, { countryCode, limit: size, offset: start });
+
+    // TIDAL pages playlist items 100 at a time. The playlist and its first
+    // page come together; a larger limit then fetches the rest of the pages
+    // at once, as album() does, and only as far as the playlist goes.
+    const firstSize = Math.min(100, limit);
+    const [playlistData, first] = await Promise.all([
         tidalGet(`${API_V1}/playlists/${encodeURIComponent(id)}`, { countryCode }),
-        tidalGet(`${API_V1}/playlists/${encodeURIComponent(id)}/items`, {
-            countryCode,
-            limit: q.int('limit', 100, 1, 500),
-            offset: q.int('offset', 0, 0)
-        })
+        itemsPage(offset, firstSize)
     ]);
-    return { version: HIFI_API_VERSION, playlist: playlistData, items: unwrapItems(itemsData) };
+    const available = (playlistData?.numberOfTracks ?? 0) + (playlistData?.numberOfVideos ?? 0);
+    const end = Math.min(offset + limit, available || offset + firstSize);
+    const rest: Promise<any>[] = [];
+    for (let start = offset + firstSize; start < end; start += 100) rest.push(itemsPage(start, Math.min(100, end - start)));
+    const restPages = await Promise.all(rest);
+    return { version: HIFI_API_VERSION, playlist: playlistData, items: [first, ...restPages].flatMap(unwrapItems) };
 }
 
 // id: artist metadata (+ a 750px picture). f: the discography (albums, then
