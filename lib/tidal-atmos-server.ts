@@ -63,8 +63,12 @@ async function fetchAtmosManifestURL(trackId: string): Promise<string> {
     const attributes = body?.data?.data?.attributes ?? body?.data?.attributes;
     if (!attributes?.uri) throw new Error('TIDAL returned no manifest for this track.');
     const formats: string[] = attributes.formats || [];
-    // Asking only for EAC3_JOC still yields a stereo manifest when the track has no Atmos mix.
-    if (!formats.includes('EAC3_JOC')) throw new Error('This track has no Dolby Atmos version on TIDAL.');
+    // Asking only for EAC3_JOC still yields a stereo manifest when the track has no
+    // Atmos mix, and also when TIDAL withholds Atmos from this login's client. The
+    // formats it did offer tell those apart in a client's log.
+    if (!formats.includes('EAC3_JOC')) {
+        throw new Error(`TIDAL gave this server no Dolby Atmos stream for this track (it offered ${formats.join(', ') || 'no formats'}).`);
+    }
     if (attributes.drmData) throw new Error('TIDAL served this Atmos stream DRM-protected, so it cannot be downloaded.');
     return attributes.uri;
 }
