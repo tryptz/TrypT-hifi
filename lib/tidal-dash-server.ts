@@ -100,6 +100,9 @@ export type DashPlan = {
     representation: DashRepresentation;
     // Total length in timescale units, summed from the SegmentTimeline (null without one).
     duration: { ticks: number; timescale: number } | null;
+    // Each media segment's length in timescale units, in order, and the first one's
+    // start time: what a segment index (sidx) needs. Null without a SegmentTimeline.
+    timeline: { timescale: number; start: number; durations: number[] } | null;
 };
 
 // Picks the highest-bandwidth representation whose codecs match `accept.codecs`
@@ -134,7 +137,7 @@ export function planFromMPD(mpd: string, mpdUrl: string, accept: { codecs: RegEx
     // No template: a single-file representation addressed by its BaseURL alone.
     if (!template) {
         if (!repBase && !mpdBase) throw new Error('Unsupported TIDAL DASH manifest layout.');
-        return { urls: [base], initialization: false, representation, duration: null };
+        return { urls: [base], initialization: false, representation, duration: null, timeline: null };
     }
 
     const templateTag = openTag(template);
@@ -147,11 +150,16 @@ export function planFromMPD(mpd: string, mpdUrl: string, accept: { codecs: RegEx
     // Each <S d="..." r="n"/> stands for 1 + n consecutive segments of d ticks.
     let count = 0;
     let ticks = 0;
-    for (const s of template.match(/<S\b[^>]*\/?>/g) || []) {
+    const durations: number[] = [];
+    const timelineEntries = template.match(/<S\b[^>]*\/?>/g) || [];
+    for (const s of timelineEntries) {
         const repeat = 1 + Number(attr(s, 'r') ?? 0);
+        const d = Number(attr(s, 'd') ?? 0);
         count += repeat;
-        ticks += repeat * Number(attr(s, 'd') ?? 0);
+        ticks += repeat * d;
+        if (count <= MAX_SEGMENTS) for (let i = 0; i < repeat; i++) durations.push(d);
     }
+    const start = Number((timelineEntries[0] && attr(timelineEntries[0], 't')) ?? 0);
     if (count === 0 || count > MAX_SEGMENTS) throw new Error('Unsupported TIDAL DASH manifest layout.');
 
     const representationId = attr(openTag(rep), 'id') || '';
@@ -169,7 +177,11 @@ export function planFromMPD(mpd: string, mpdUrl: string, accept: { codecs: RegEx
         urls,
         initialization: Boolean(initialization),
         representation,
-        duration: timescale && Number.isFinite(ticks) && ticks > 0 ? { ticks, timescale } : null
+        duration: timescale && Number.isFinite(ticks) && ticks > 0 ? { ticks, timescale } : null,
+        timeline:
+            timescale && durations.length === count && durations.every((d) => Number.isFinite(d) && d > 0) && Number.isFinite(start)
+                ? { timescale, start, durations }
+                : null
     };
 }
 
