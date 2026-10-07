@@ -1,6 +1,6 @@
 import ArtistDialog from './artist-dialog';
 import SourceTag from './source-tag';
-import DolbyAtmosBadge from './dolby-atmos-badge';
+import DolbyAtmosBadge, { DolbyMark } from './dolby-atmos-badge';
 import DownloadAlbumButton from './download-album-button';
 import Image from 'next/image';
 import React, { useEffect, useState } from 'react';
@@ -169,36 +169,60 @@ const ReleaseCard = ({
                                         </a>
                                     </Button>
                                 ) : (result as QobuzTrack).album ? (
-                                    <Button
-                                        size='icon'
-                                        variant='ghost'
-                                        onClick={async () => {
-                                            if (source === 'apple')
-                                                await createAppleDownloadJob(
-                                                    result as QobuzTrack,
-                                                    setStatusBar,
-                                                    settings,
-                                                    toast as any,
-                                                    showHandoff,
-                                                    country,
-                                                    fetchedAlbumData,
-                                                    setFetchedAlbumData
-                                                );
-                                            else
-                                                await createDownloadJob(
-                                                    result as QobuzTrack,
-                                                    setStatusBar,
-                                                    ffmpegState!,
-                                                    settings,
-                                                    toast as any,
-                                                    fetchedAlbumData,
-                                                    setFetchedAlbumData,
-                                                    country
-                                                );
-                                        }}
-                                    >
-                                        <DownloadIcon />
-                                    </Button>
+                                    <>
+                                        <Button
+                                            size='icon'
+                                            variant='ghost'
+                                            onClick={async () => {
+                                                if (source === 'apple')
+                                                    await createAppleDownloadJob(
+                                                        result as QobuzTrack,
+                                                        setStatusBar,
+                                                        settings,
+                                                        toast as any,
+                                                        showHandoff,
+                                                        country,
+                                                        fetchedAlbumData,
+                                                        setFetchedAlbumData
+                                                    );
+                                                else
+                                                    await createDownloadJob(
+                                                        result as QobuzTrack,
+                                                        setStatusBar,
+                                                        ffmpegState!,
+                                                        settings,
+                                                        toast as any,
+                                                        fetchedAlbumData,
+                                                        setFetchedAlbumData,
+                                                        country
+                                                    );
+                                            }}
+                                        >
+                                            <DownloadIcon />
+                                        </Button>
+                                        {isTidalAtmos(result) && (
+                                            <Button
+                                                size='icon'
+                                                variant='ghost'
+                                                title='Download Dolby Atmos (.m4a)'
+                                                onClick={async () => {
+                                                    await createDownloadJob(
+                                                        result as QobuzTrack,
+                                                        setStatusBar,
+                                                        ffmpegState!,
+                                                        settings,
+                                                        toast as any,
+                                                        fetchedAlbumData,
+                                                        setFetchedAlbumData,
+                                                        country,
+                                                        { atmos: true }
+                                                    );
+                                                }}
+                                            >
+                                                <DolbyMark className='!w-5 !h-[14px]' />
+                                            </Button>
+                                        )}
+                                    </>
                                 ) : (
                                     <DownloadAlbumButton
                                         variant='ghost'
@@ -456,6 +480,33 @@ const ReleaseCard = ({
                                                             }}
                                                         >
                                                             <DownloadIcon className='!size-4' />
+                                                        </Button>
+                                                    )}
+                                                    {track.streamable && source !== 'apple' && isTidalAtmos(track) && (
+                                                        <Button
+                                                            title={`Download '${formatTitle(track)}' in Dolby Atmos (.m4a)`}
+                                                            className='md:group-hover:flex md:hidden justify-center aspect-square h-6 w-6 hover:bg-transparent'
+                                                            size='icon'
+                                                            variant='ghost'
+                                                            onClick={async () => {
+                                                                await createDownloadJob(
+                                                                    track,
+                                                                    setStatusBar,
+                                                                    ffmpegState!,
+                                                                    settings,
+                                                                    toast as any,
+                                                                    undefined,
+                                                                    undefined,
+                                                                    country,
+                                                                    { atmos: true }
+                                                                );
+                                                                toast({
+                                                                    title: `Added '${formatTitle(track)}' to the queue`,
+                                                                    description: 'Dolby Atmos (.m4a)'
+                                                                });
+                                                            }}
+                                                        >
+                                                            <DolbyMark className='!w-4 !h-3' />
                                                         </Button>
                                                     )}
                                                 </div>

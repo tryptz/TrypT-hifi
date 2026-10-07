@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { tidalRequest } from './tidal-server';
 import { BuildPlan, attr, dashFile, describeDash, numberAttr, openDash, openTag, planFromMPD as planDash, proxyAgent } from './tidal-dash-server';
-import { tidalTrackTags, withMp4Tags } from './mp4-tags';
+import { tagInitSegment, tidalTrackTags } from './mp4-tags';
 
 // ---------------------------------------------------------------------------
 // Server-only TIDAL Dolby Atmos (E-AC-3 JOC) files. Do NOT import into the client.
@@ -63,8 +63,12 @@ async function fetchAtmosManifestURL(trackId: string): Promise<string> {
     const attributes = body?.data?.data?.attributes ?? body?.data?.attributes;
     if (!attributes?.uri) throw new Error('TIDAL returned no manifest for this track.');
     const formats: string[] = attributes.formats || [];
-    // Asking only for EAC3_JOC still yields a stereo manifest when the track has no Atmos mix.
-    if (!formats.includes('EAC3_JOC')) throw new Error('This track has no Dolby Atmos version on TIDAL.');
+    // Asking only for EAC3_JOC still yields a stereo manifest when the track has no
+    // Atmos mix, and also when TIDAL withholds Atmos from this login's client. The
+    // formats it did offer tell those apart in a client's log.
+    if (!formats.includes('EAC3_JOC')) {
+        throw new Error(`TIDAL gave this server no Dolby Atmos stream for this track (it offered ${formats.join(', ') || 'no formats'}).`);
+    }
     if (attributes.drmData) throw new Error('TIDAL served this Atmos stream DRM-protected, so it cannot be downloaded.');
     return attributes.uri;
 }
@@ -109,17 +113,20 @@ const atmosKey = (trackId: string) => `atmos-t1-${trackId}`;
 
 function atmosPlan(trackId: string) {
     return async (): Promise<BuildPlan<AtmosStreamInfo>> => {
-        // The tags are fetched alongside the manifest, so a track with no Atmos
-        // mix still fails as fast as before. The file's tags say it is Atmos:
-        // the audio is passed through untouched, only its init segment grows.
-        const [mpdUrl, tags] = await Promise.all([fetchAtmosManifestURL(trackId), tidalTrackTags(trackId, 'Dolby Atmos')]);
+        // The tags are fetched alongside the manifest and not waited for here:
+        // the plan, and so /api/tidal/download-music's answer, needs only the
+        // manifest. Storing the init segment waits for them (tagInitSegment).
+        // The file's tags say it is Atmos: the audio is passed through
+        // untouched, only its init segment grows. tidalTrackTags never rejects.
+        const tags = tidalTrackTags(trackId, 'Dolby Atmos');
+        const mpdUrl = await fetchAtmosManifestURL(trackId);
         const agent = proxyAgent();
         const mpd = (await axios.get(mpdUrl, { responseType: 'text', httpAgent: agent, httpsAgent: agent })).data as string;
         const { urls, info, initialization } = planFromMPD(mpd, mpdUrl);
         return {
             urls,
             info,
-            transform: tags && initialization ? (index, data) => (index === 0 ? withMp4Tags(data, tags) : data) : undefined
+            transform: initialization ? tagInitSegment(tags) : undefined
         };
     };
 }
