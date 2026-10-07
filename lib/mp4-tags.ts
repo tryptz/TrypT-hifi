@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { tidalRequest } from './tidal-server';
 import { proxyAgent, SegmentTransform } from './tidal-dash-server';
+import { firstTrackId, SegmentIndex, sidxBox } from './mp4-sidx';
 
 // ---------------------------------------------------------------------------
 // iTunes-style tags (moov > udta > meta > ilst) for the fragmented MP4s this
@@ -123,18 +124,104 @@ export function withMp4Tags(init: Buffer, tags: Mp4Tags): Buffer {
 }
 
 /**
- * A DASH segment transform that tags the init segment (index 0) once [tags]
- * arrive and passes every other segment through. Taking the tags as a promise
- * lets a build start, and the server answer, while they are still being
- * fetched; only storing segment 0 waits for them. Null tags leave it as is.
+ * A DASH segment transform that finishes the init segment (index 0): tagged
+ * once [tags] arrive, then followed by a segment index (sidx, lib/mp4-sidx.ts)
+ * when [index] has one, so the first fragment comes right after it, and its
+ * header durations set from [duration] (withDuration). Every
+ * other segment passes through. Both are promises so a build starts, and the
+ * server answers, while they are fetched; only storing segment 0 waits for
+ * them. Null leaves either out.
  */
-export const tagInitSegment =
-    (tags: Promise<Mp4Tags | null>): SegmentTransform =>
-    async (index, data) => {
-        if (index !== 0) return data;
-        const found = await tags;
-        return found ? withMp4Tags(data, found) : data;
+/**
+ * [init] with its movie (mvhd), track (tkhd) and media (mdhd) durations set
+ * to [seconds] where they are 0. A DASH init segment leaves them 0, since the
+ * length lives in the manifest; joined into one file, that leaves Android's
+ * MediaStore with a duration of 0, and Tryptify's library, which skips
+ * anything shorter than 30 seconds, never lists the file. Only the first
+ * track is set: these files carry one.
+ */
+export function withDuration(init: Buffer, seconds: number): Buffer {
+    if (!(seconds > 0)) return init;
+    const out = Buffer.from(init);
+    const child = (type: string, start: number, end: number) => boxes(out, start, end).find((b) => b.type === type);
+    const moov = child('moov', 0, out.length);
+    if (!moov) return init;
+    const inside = (b: Box) => [b.start + b.header, b.end] as const;
+    // Each *hd box: version byte, flags, then times; `timescale`/`duration` at version-dependent offsets.
+    const setDuration = (b: Box | undefined, timescale: number, at0: number, at1: number) => {
+        if (!b || !(timescale > 0)) return;
+        const body = b.start + b.header;
+        const v1 = out[body] === 1;
+        const at = body + (v1 ? at1 : at0);
+        const value = Math.round(seconds * timescale);
+        if (v1) {
+            if (at + 8 <= b.end && out.readBigUInt64BE(at) === BigInt(0)) out.writeBigUInt64BE(BigInt(value), at);
+        } else if (at + 4 <= b.end && out.readUInt32BE(at) === 0 && value < 2 ** 32) out.writeUInt32BE(value, at);
     };
+    const timescaleOf = (b: Box | undefined) => {
+        if (!b) return 0;
+        const body = b.start + b.header;
+        return out.readUInt32BE(body + (out[body] === 1 ? 20 : 12));
+    };
+    const mvhd = child('mvhd', ...inside(moov));
+    const movieTimescale = timescaleOf(mvhd);
+    setDuration(mvhd, movieTimescale, 16, 24);
+    const trak = child('trak', ...inside(moov));
+    if (trak) {
+        setDuration(child('tkhd', ...inside(trak)), movieTimescale, 20, 28);
+        const mdia = child('mdia', ...inside(trak));
+        const mdhd = mdia && child('mdhd', ...inside(mdia));
+        setDuration(mdhd, timescaleOf(mdhd), 16, 24);
+    }
+    return out;
+}
+
+/**
+ * [segment] with its own sidx boxes, if it has any, renamed to "free". A
+ * DASH media segment may index itself; joined into one file, each of those
+ * would replace the whole-file index as a player reads past it (ExoPlayer
+ * takes every sidx it meets as the new seek map). Renaming keeps every size
+ * and offset, so the whole-file index's HEAD sizes still hold, and players
+ * skip free boxes.
+ */
+function withoutSegmentIndexes(segment: Buffer): Buffer {
+    let found: Box[];
+    try {
+        found = boxes(segment);
+    } catch {
+        return segment; // not ours to judge: passed on as TIDAL sent it
+    }
+    let copy: Buffer | null = null;
+    for (const b of found) {
+        if (b.type !== 'sidx') continue;
+        copy ??= Buffer.from(segment);
+        copy.write('free', b.start + 4, 'latin1');
+    }
+    return copy ?? segment;
+}
+
+export function finishInitSegment(
+    tags: Promise<Mp4Tags | null>,
+    index: Promise<SegmentIndex | null> = Promise.resolve(null),
+    // The file's length, from the manifest, for the header's durations (withDuration).
+    duration: { ticks: number; timescale: number } | null = null
+): SegmentTransform {
+    let known: SegmentIndex | null = null;
+    index.then((found) => (known = found));
+    return async (i, data) => {
+        if (i !== 0) {
+            // A media segment the index sized wrongly makes every seek past it land off target.
+            const expected = known?.references[i - 1]?.size;
+            if (expected !== undefined && expected !== data.length)
+                console.warn(`[sidx] segment ${i} is ${data.length} bytes where HEAD said ${expected}; this file's index is off.`);
+            return withoutSegmentIndexes(data);
+        }
+        const [foundTags, foundIndex] = await Promise.all([tags, index]);
+        const tagged = foundTags ? withMp4Tags(data, foundTags) : data;
+        const init = duration ? withDuration(tagged, duration.ticks / duration.timescale) : tagged;
+        return foundIndex ? Buffer.concat([init, sidxBox(firstTrackId(init), foundIndex)]) : init;
+    };
+}
 
 // --- Tags for a TIDAL track -----------------------------------------------------
 

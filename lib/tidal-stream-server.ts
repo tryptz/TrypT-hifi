@@ -1,7 +1,8 @@
 import { tidalRequest } from './tidal-server';
 import { BuildPlan, describeDash, numberAttr, openDash, openTag, planFromMPD } from './tidal-dash-server';
 import { flacFramesFromSegment, flacHeaderFromInit } from './flac-mp4';
-import { Mp4Tags, tagInitSegment, tidalTrackTags } from './mp4-tags';
+import { finishInitSegment, Mp4Tags, tidalTrackTags } from './mp4-tags';
+import { segmentIndex } from './mp4-sidx';
 
 // ---------------------------------------------------------------------------
 // Server-only TIDAL stereo streams. Do NOT import into the client.
@@ -60,8 +61,9 @@ function decodeManifest(data: any): Manifest {
 const deliveredQuality = (data: any, requested: TidalQuality): TidalQuality =>
     (TIDAL_QUALITIES as readonly string[]).includes(data?.audioQuality) ? data.audioQuality : requested;
 
-// "t1": AAC files carry tags since; untagged ones built before are not reused.
-const streamKey = (trackId: string, quality: TidalQuality) => `stream-t1-${trackId}-${quality}`;
+// "t2": AAC files carry tags (t1) and a segment index (t2) since; ones built
+// before are not reused. FLAC files are unchanged but share the key.
+const streamKey = (trackId: string, quality: TidalQuality) => `stream-t2-${trackId}-${quality}`;
 
 function dashPlan(mpd: string, quality: TidalQuality, tags: Promise<Mp4Tags | null> = Promise.resolve(null)): BuildPlan<StereoStreamInfo> {
     const flac = isLossless(quality);
@@ -77,7 +79,7 @@ function dashPlan(mpd: string, quality: TidalQuality, tags: Promise<Mp4Tags | nu
         transform: flac
             ? (index, data) => (index === 0 ? flacHeaderFromInit(data, plan.duration) : flacFramesFromSegment(data))
             : plan.initialization
-              ? tagInitSegment(tags)
+              ? finishInitSegment(tags, segmentIndex(plan.urls.slice(1), plan.timeline), plan.duration)
               : undefined
     };
 }

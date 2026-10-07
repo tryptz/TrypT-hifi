@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { tidalRequest } from './tidal-server';
-import { BuildPlan, attr, dashFile, describeDash, numberAttr, openDash, openTag, planFromMPD as planDash, proxyAgent } from './tidal-dash-server';
-import { tagInitSegment, tidalTrackTags } from './mp4-tags';
+import { BuildPlan, DashPlan, attr, dashFile, describeDash, numberAttr, openDash, openTag, planFromMPD as planDash, proxyAgent } from './tidal-dash-server';
+import { finishInitSegment, tidalTrackTags } from './mp4-tags';
+import { segmentIndex } from './mp4-sidx';
 
 // ---------------------------------------------------------------------------
 // Server-only TIDAL Dolby Atmos (E-AC-3 JOC) files. Do NOT import into the client.
@@ -83,10 +84,10 @@ function dolbyProperty(scopes: string[], scheme: RegExp): string | null {
     return null;
 }
 
-export type AtmosPlan = { urls: string[]; info: AtmosStreamInfo; initialization: boolean };
+export type AtmosPlan = { urls: string[]; info: AtmosStreamInfo; initialization: boolean; timeline: DashPlan['timeline']; duration: DashPlan['duration'] };
 
 export function planFromMPD(mpd: string, mpdUrl: string): AtmosPlan {
-    const { urls, representation, initialization } = planDash(mpd, mpdUrl, ATMOS);
+    const { urls, representation, initialization, timeline, duration } = planDash(mpd, mpdUrl, ATMOS);
     const { rep, set, setOwn, codecs, bandwidth } = representation;
     const scopes = [rep, setOwn];
     const channelConfiguration = dolbyProperty(scopes, /audio_channel_configuration/i);
@@ -100,7 +101,7 @@ export function planFromMPD(mpd: string, mpdUrl: string): AtmosPlan {
         extensionType: dolbyProperty(scopes, /EC3_ExtensionType/i),
         objectCount: Number.isFinite(complexity) && complexity > 0 ? complexity : null
     };
-    return { urls, info, initialization };
+    return { urls, info, initialization, timeline, duration };
 }
 
 // Kept for the original single-representation callers/tests.
@@ -108,25 +109,28 @@ export const segmentURLsFromMPD = (mpd: string, mpdUrl: string) => planFromMPD(m
 
 // --- Files ----------------------------------------------------------------------
 
-// "t1": Atmos files carry tags since; untagged ones built before are not reused.
-const atmosKey = (trackId: string) => `atmos-t1-${trackId}`;
+// "t2": Atmos files carry tags (t1) and a segment index (t2) since; ones built
+// before are not reused.
+const atmosKey = (trackId: string) => `atmos-t2-${trackId}`;
 
 function atmosPlan(trackId: string) {
     return async (): Promise<BuildPlan<AtmosStreamInfo>> => {
         // The tags are fetched alongside the manifest and not waited for here:
         // the plan, and so /api/tidal/download-music's answer, needs only the
-        // manifest. Storing the init segment waits for them (tagInitSegment).
+        // manifest. Storing the init segment waits for them (finishInitSegment).
         // The file's tags say it is Atmos: the audio is passed through
         // untouched, only its init segment grows. tidalTrackTags never rejects.
         const tags = tidalTrackTags(trackId, 'Dolby Atmos');
         const mpdUrl = await fetchAtmosManifestURL(trackId);
         const agent = proxyAgent();
         const mpd = (await axios.get(mpdUrl, { responseType: 'text', httpAgent: agent, httpsAgent: agent })).data as string;
-        const { urls, info, initialization } = planFromMPD(mpd, mpdUrl);
+        const { urls, info, initialization, timeline, duration } = planFromMPD(mpd, mpdUrl);
+        // A sidx after the init segment makes the file seekable (lib/mp4-sidx.ts).
+        const index = initialization ? segmentIndex(urls.slice(1), timeline) : Promise.resolve(null);
         return {
             urls,
             info,
-            transform: initialization ? tagInitSegment(tags) : undefined
+            transform: initialization ? finishInitSegment(tags, index, duration) : undefined
         };
     };
 }
