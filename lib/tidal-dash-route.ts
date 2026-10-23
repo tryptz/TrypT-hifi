@@ -8,7 +8,8 @@ import { OpenedDash } from './tidal-dash-server';
 // download pipeline can size the file first, like it does for /api/file links.
 // A GET from byte 0 while the file is still being assembled streams segments as
 // they arrive, so a player starts within a segment or two instead of waiting
-// for the whole file.
+// for the whole file; with `whole=1` it waits instead, so the answer has a
+// length and ranges and a browser can seek in it.
 export async function serveDash(
     request: NextRequest,
     method: 'GET' | 'HEAD',
@@ -23,7 +24,11 @@ export async function serveDash(
     };
     const rangeHeader = request.headers.get('range');
     const fromStart = !rangeHeader || /^bytes=0-$/.test(rangeHeader);
-    if ('build' in opened && method === 'GET' && fromStart) {
+    // `whole=1`: the caller wants a file it can seek in (tryptify.com's web
+    // player, after a seek the streamed answer could not take), so it waits
+    // for the whole file and gets its length and ranges.
+    const whole = request.nextUrl.searchParams.get('whole') === '1';
+    if ('build' in opened && method === 'GET' && fromStart && !whole) {
         // Size is unknown until every segment is in, so no Content-Length / ranges yet.
         const segments = opened.build.stream();
         const body = new ReadableStream<Uint8Array>({
