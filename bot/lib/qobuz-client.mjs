@@ -7,6 +7,8 @@ import { config } from './config.mjs';
 function headers() {
     const h = { Accept: 'application/json' };
     if (config.tokenCountry) h['Token-Country'] = config.tokenCountry;
+    // The app's password, when it has one (ACCESS_PASSWORD, the same .env).
+    if (config.accessPassword) h['X-Access-Key'] = config.accessPassword;
     return h;
 }
 

@@ -47,7 +47,7 @@ const nextConfig: NextConfig = {
                     },
                     {
                         key: 'Access-Control-Allow-Headers',
-                        value: 'X-Requested-With, Content-Type, Authorization, Token-Country'
+                        value: 'X-Requested-With, Content-Type, Authorization, Token-Country, X-Access-Key'
                     },
                     {
                         key: 'Cross-Origin-Resource-Policy',
