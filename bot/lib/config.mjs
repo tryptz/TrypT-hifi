@@ -28,6 +28,9 @@ export const config = {
     // Base URL of the running Qobuz-DL web app whose API the bot reuses.
     appUrl: (process.env.APP_URL || 'http://localhost:3000').replace(/\/+$/, ''),
 
+    // The app's password (middleware.ts), sent as X-Access-Key. Unset: the app is open.
+    accessPassword: process.env.ACCESS_PASSWORD?.trim() || null,
+
     // Optional country code forwarded to the API as the `Token-Country` header.
     tokenCountry: process.env.TOKEN_COUNTRY || null,
 

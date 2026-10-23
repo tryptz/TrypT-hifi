@@ -18,6 +18,7 @@ TrypT-hifi started as a fork of [Qobuz-DL](https://github.com/QobuzDL/Qobuz-DL) 
     - [Apple Music](#apple-music)
     - [Deezer](#deezer)
     - [TIDAL](#tidal)
+    - [Access password](#access-password)
     - [Discord bot button](#discord-bot-button)
 - [Running with Docker](#running-with-docker)
 - [Deploying](#deploying)
@@ -130,7 +131,7 @@ TIDAL_REFRESH_TOKEN=...
 To get these values, run [hifi-api](https://github.com/binimum/hifi-api)'s `tidal_auth/tidal_auth.py` (`pip install -r tidal_auth/requirements.txt`, then run it and approve the login link with a TIDAL account that has a subscription). Copy `client_ID`, `client_secret` and `refresh_token` from the `token.json` it writes. TrypT-hifi swaps the refresh token for short-lived access tokens on its own. If TIDAL ever revokes it, the TIDAL routes answer `TIDAL login failed` and you re-run the script.
 
 > [!WARNING]
-> Anyone who can reach your site can stream and download through this account. TIDAL's terms don't allow that, and it can get the account banned. Keep the deployment private (for example behind Cloudflare Access) if it's reachable from the internet.
+> Anyone who can reach your site can stream and download through this account. TIDAL's terms don't allow that, and it can get the account banned. Set an [access password](#access-password), or keep the deployment private some other way (for example behind Cloudflare Access), if it's reachable from the internet.
 
 **Option B — an external HiFi API instance**, the same backend Tryptify's "Tidal HiFi URL" setting uses. It's only used when Option A isn't configured:
 
@@ -158,6 +159,16 @@ When TIDAL delivers a track as DASH segments instead of a single file (some acco
 - The Atmos audio is passed through byte-for-byte (no re-encode), so players still see it as Atmos. Tags (title, artists, album, album artist, track and disc, date, cover, and "Dolby Atmos" as the comment) are written into the file header without touching the audio.
 - Tracks without an Atmos mix, or whose Atmos stream TIDAL serves with DRM, fall back to the stereo quality.
 - In-browser playback stays stereo, because most browsers can't decode E-AC-3.
+
+### Access password
+
+Set `ACCESS_PASSWORD` to make the whole site need a password:
+
+- **The site's own pages** ask for it once, at `/unlock`, and then remember it in a cookie (a hash of the password, for a year). Changing the password signs everyone out.
+- **Tryptify** asks for it under the server's address (Settings › Connections › Add API, and the web player's Trypt HiFi box) and sends it as the `X-Access-Key` header. Stream links the player fetches by itself (`/api/tidal/stream-file`, `/api/tidal/atmos-file`) carry it as `access_key=` in the address instead, since an audio player can't send headers.
+- **The Discord bot** reads the same `ACCESS_PASSWORD` from `.env` and sends it too.
+
+Without the password, API routes answer `401` and pages go to `/unlock`. A few routes stay open because they carry their own proof: signed file links (`/api/file`, `/api/apple/files/…`), the Apple decrypt queue (`APPLE_JOB_QUEUE_TOKEN`) and a job's progress by its token. Leave `ACCESS_PASSWORD` unset and the site is open, as before.
 
 ### Discord bot button
 
