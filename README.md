@@ -167,7 +167,7 @@ With either option you can search TIDAL (or paste `tidal.com` album/track/artist
 | CD                 | `LOSSLESS`        | 16-bit FLAC                                 |
 | MP3 320            | `HIGH`            | AAC 320                                     |
 
-When TIDAL delivers a track as DASH segments instead of a single file (some accounts get DASH for every quality), TrypT-hifi assembles it on the server and serves it from `/api/tidal/stream-file`. FLAC is remuxed losslessly into a plain `.flac`; AAC stays `.m4a`.
+When TIDAL delivers a track as DASH segments instead of a single file (some accounts get DASH for every quality), TrypT-hifi assembles it on the server and serves it from `/api/tidal/stream-file`. FLAC is remuxed losslessly into a plain `.flac`; AAC stays `.m4a`. A first request is answered as the segments arrive, so playback starts at once, but such an answer has no length and can't be sought in; add `whole=1` and the server waits for the whole file, then answers with its length and byte ranges (tryptify.com's web player does that after a seek).
 
 #### Dolby Atmos
 
