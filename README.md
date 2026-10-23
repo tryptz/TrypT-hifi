@@ -115,6 +115,24 @@ Browsing and 30-second previews work with no setup. For full-length downloads (M
 DEEZER_ARL=your_arl_cookie_value_here
 ```
 
+#### Playing Deezer in a browser
+
+Deezer's full-length files are encrypted ("striped": every third 2048-byte block is Blowfish-encrypted with a key made from the song's ID). `/api/deezer/download-music` hands back a signed `/api/file` link to the file exactly as Deezer serves it, which Tryptify's Android app decrypts itself. No browser can play that, so add `decrypted=1` and the link decrypts on the server instead:
+
+```http
+GET /api/deezer/download-music?track_id=3135553&quality=27&decrypted=1
+```
+
+```json
+{ "success": true, "data": { "url": "https://your-site/api/file?url=…&exp=…&deezer=3135553&format=FLAC&sig=…" } }
+```
+
+- The response has the same shape as without `decrypted=1`; only the link differs. Without it, nothing changes.
+- The link carries the song's ID and the file's format, and the signature covers both, so they can't be changed or added to a plain link. Like every signed link, it needs no [access password](#access-password) and expires after 15 minutes.
+- `/api/file` streams the file decrypted, with `Content-Type: audio/flac` or `audio/mpeg` (from the format the subscription actually gave, which can be lower than the one asked for).
+- Seeking works: `Range: bytes=start-` and `bytes=start-end` are answered with `206` and the right `Content-Range` and `Content-Length`. The server fetches from the start of the 2048-byte block, decrypts, and cuts the answer back to the byte asked for. A suffix range (`bytes=-500`) or several ranges get the whole file with `200`.
+- Blowfish is done in plain TypeScript (`lib/blowfish.ts`), because Node's OpenSSL 3 no longer ships it. `npm test` checks it against the standard test vectors and against `openssl enc -bf-cbc` where that has the legacy provider.
+
 ### TIDAL
 
 TIDAL needs a HiFi API, and there are two ways to give it one.
@@ -219,7 +237,7 @@ Short version: add `DISCORD_BOT_TOKEN`, `DISCORD_CLIENT_ID` and `APP_URL` to `.e
 
 1. Fork the repository.
 2. Create a new branch: `git checkout -b feature-name`.
-3. Make your changes and run `npm run lint`.
+3. Make your changes and run `npm run lint` and `npm test`.
 4. Push your branch: `git push origin feature-name`.
 5. Open a pull request.
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDeezerDownloadURL } from '@/lib/deezer-dl-server';
-import { getRequestOrigin, signFileURL } from '@/lib/file-proxy';
+import { getDeezerDownloadFile, getDeezerDownloadURL } from '@/lib/deezer-dl-server';
+import { getRequestOrigin, signDeezerFileURL, signFileURL } from '@/lib/file-proxy';
 import z from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -10,18 +10,29 @@ export const dynamic = 'force-dynamic';
 // pointing at a signed /api/file link), so the download pipeline and player treat
 // every source identically. quality ids map through getDeezerDownloadURL
 // (27/6 -> FLAC, 7 -> MP3 320, 5 -> MP3 128), always to the full-length file.
+//
+// The file is Deezer's own, still striped (lib/deezer-decrypt.ts), which
+// Tryptify's app decrypts itself. A browser cannot, so `decrypted=1` asks for a
+// link /api/file decrypts on the way instead; the response keeps its shape.
 const downloadParamsSchema = z.object({
     track_id: z.string().regex(/^\d+$/, 'ID must be numeric'),
-    quality: z.enum(['27', '7', '6', '5']).default('27')
+    quality: z.enum(['27', '7', '6', '5']).default('27'),
+    decrypted: z.enum(['0', '1', 'true', 'false']).optional().transform((v) => v === '1' || v === 'true')
 });
 
 export async function GET(request: NextRequest) {
     const params = Object.fromEntries(new URL(request.url).searchParams.entries());
     try {
-        const { track_id, quality } = downloadParamsSchema.parse(params);
-        const cdnUrl = await getDeezerDownloadURL(track_id, quality);
-        if (!cdnUrl) throw new Error('Deezer returned no stream for this track.');
-        const url = signFileURL(cdnUrl, getRequestOrigin(request));
+        const { track_id, quality, decrypted } = downloadParamsSchema.parse(params);
+        let url: string;
+        if (decrypted) {
+            const file = await getDeezerDownloadFile(track_id, quality);
+            url = signDeezerFileURL(file.url, getRequestOrigin(request), { id: file.id, format: file.format });
+        } else {
+            const cdnUrl = await getDeezerDownloadURL(track_id, quality);
+            if (!cdnUrl) throw new Error('Deezer returned no stream for this track.');
+            url = signFileURL(cdnUrl, getRequestOrigin(request));
+        }
         return new NextResponse(JSON.stringify({ success: true, data: { url } }), { status: 200 });
     } catch (error: any) {
         return new NextResponse(

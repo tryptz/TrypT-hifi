@@ -196,7 +196,7 @@ export async function getDeezerFullStreamURL(
     trackId: string | number,
     preferred: DeezerStreamQuality = 'FLAC',
     options: AxiosRequestConfig = {}
-): Promise<{ url: string; format: DeezerStreamQuality; duration: number; title?: string; artist?: string }> {
+): Promise<{ url: string; format: DeezerStreamQuality; id: string; duration: number; title?: string; artist?: string }> {
     const [session, track] = await Promise.all([
         getDeezerSession(options),
         getDeezerTrackStreamData(trackId, options)
@@ -206,6 +206,8 @@ export async function getDeezerFullStreamURL(
         return {
             url: await getDeezerStreamURL(track.TRACK_TOKEN, format, session.license_token, options),
             format,
+            // The song the file belongs to, whose id makes its decryption key.
+            id: track.SNG_ID,
             duration: Number(track.DURATION) || 0,
             title: track.SNG_TITLE,
             artist: track.ART_NAME
@@ -217,6 +219,8 @@ export async function getDeezerFullStreamURL(
             return {
                 url: await getDeezerStreamURL(track.FALLBACK.TRACK_TOKEN, format, session.license_token, options),
                 format,
+                // The file is the fallback song's, and so is its key.
+                id: String(track.FALLBACK.SNG_ID || track.SNG_ID),
                 duration: Number(track.DURATION) || 0,
                 title: track.SNG_TITLE,
                 artist: track.ART_NAME
@@ -233,9 +237,17 @@ export function pickDeezerFormat(session: DeezerSessionInfo): DeezerStreamQualit
 }
 
 export async function getDeezerDownloadURL(trackId: string | number, quality: DeezerStreamQuality | '27' | '7' | '6' | '5' = '27', options: AxiosRequestConfig = {}): Promise<string | null> {
-    const requested: DeezerStreamQuality = quality === '27' || quality === '6' ? 'FLAC' : quality === '7' ? 'MP3_320' : quality === '5' ? 'MP3_128' : (quality as DeezerStreamQuality);
-    const { url } = await getDeezerFullStreamURL(trackId, requested, options);
+    const { url } = await getDeezerDownloadFile(trackId, quality, options);
     return url;
+}
+
+// The same file, with what decrypting it needs: the id of the song it belongs
+// to (the FALLBACK song's when Deezer served that instead) and the format it
+// actually came in (the subscription may not have the one asked for).
+export async function getDeezerDownloadFile(trackId: string | number, quality: DeezerStreamQuality | '27' | '7' | '6' | '5' = '27', options: AxiosRequestConfig = {}): Promise<{ url: string; format: DeezerStreamQuality; id: string }> {
+    const requested: DeezerStreamQuality = quality === '27' || quality === '6' ? 'FLAC' : quality === '7' ? 'MP3_320' : quality === '5' ? 'MP3_128' : (quality as DeezerStreamQuality);
+    const { url, format, id } = await getDeezerFullStreamURL(trackId, requested, options);
+    return { url, format, id };
 }
 
 // Check if a track is downloadable (lossless/FLAC available with the current ARL)
