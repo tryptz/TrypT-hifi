@@ -29,8 +29,16 @@ export async function serveDash(
     // for the whole file and gets its length and ranges.
     const whole = request.nextUrl.searchParams.get('whole') === '1';
     if ('build' in opened && method === 'GET' && fromStart && !whole) {
+        // Wait for the plan first: a track TIDAL refuses (not licensed where
+        // the subscription is, no such stream) then fails here, as an error
+        // the caller can read, instead of after a 200 has gone out, where the
+        // only way left to fail was dropping the connection (a 502 with no
+        // CORS header, which a browser reports as a CORS error).
+        const build = opened.build;
+        if (!build.info && !build.failed) await new Promise<void>((resolve) => build.once('progress', () => resolve()));
+        if (build.failed) throw build.failed;
         // Size is unknown until every segment is in, so no Content-Length / ranges yet.
-        const segments = opened.build.stream();
+        const segments = build.stream();
         const body = new ReadableStream<Uint8Array>({
             async pull(controller) {
                 try {
@@ -66,11 +74,19 @@ export async function serveDash(
     return new NextResponse(stream, { status, headers });
 }
 
-export const dashErrorResponse = (error: any) =>
-    new NextResponse(
+// The upstream's own status where there is one (a track TIDAL will not play
+// here is a 403, not a bad request), and CORS on the error too, so a page on
+// another site can read why.
+export const dashErrorResponse = (error: any) => {
+    const status = Number(error?.status ?? error?.cause?.status);
+    return new NextResponse(
         JSON.stringify({
             success: false,
             error: error?.errors || error?.message || 'An error occurred parsing the request.'
         }),
-        { status: 400 }
+        {
+            status: Number.isInteger(status) && status >= 400 && status < 600 ? status : 400,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        }
     );
+};
