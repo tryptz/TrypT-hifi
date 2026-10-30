@@ -119,6 +119,10 @@ DEEZER_ARL=your_arl_cookie_value_here
 
 Since October 2026 Deezer HiFi includes hi-res FLAC (Deezer's `FLAC_24` format, 24-bit at up to 192 kHz) at no extra cost. Either 24-bit **Max Download Quality** setting (`quality=27` or `quality=7`) asks for it. Deezer keeps one hi-res file per track, at whatever rate its master has (88.2 kHz, 96 kHz, 192 kHz…), and only tracks with a hi-res master have one. Every request asks Deezer for a list, best first (`FLAC_24`, `FLAC`, `MP3_320`, `MP3_128`), so a track without a hi-res master comes back as 16-bit FLAC instead of failing. The link names the format Deezer actually served (`format=FLAC_24` or `format=FLAC`). The hi-res file is encrypted the same way as the others, so `decrypted=1` works on it unchanged.
 
+#### AI-generated tag
+
+Deezer runs its own detector for music made with generative AI (Suno, Udio and the like) and labels the albums it catches as "AI-generated content". With `DEEZER_ARL` set, Deezer results show the same verdict as a pink **AI** tag on the album card and in the album's dialog. Deezer's public API doesn't expose it, so the server asks Deezer's own GraphQL API (`pipe.deezer.com`, `Album.hasIdentifiedAIContent`), batched and cached for six hours. Without an ARL, or if that lookup fails, results simply come back untagged.
+
 #### Playing Deezer in a browser
 
 Deezer's full-length files are encrypted ("striped": every third 2048-byte block is Blowfish-encrypted with a key made from the song's ID). `/api/deezer/download-music` hands back a signed `/api/file` link to the file exactly as Deezer serves it, which Tryptify's Android app decrypts itself. No browser can play that, so add `decrypted=1` and the link decrypts on the server instead:

@@ -83,11 +83,20 @@ export type DeezerError = { error: { type: string; message: string; code: number
 export type DeezerExtras = {
     id: number;
     link: string | null;
+    // Deezer detected AI-generated tracks on this album (set server-side by
+    // lib/deezer-ai-server.ts when DEEZER_ARL is set).
+    ai?: boolean;
 };
 
 export type DeezerTrackExtras = DeezerExtras & { hasPreview: boolean };
 
 export const isDeezerItem = (item: unknown): boolean => Boolean((item as { deezer?: DeezerExtras } | null)?.deezer);
+
+// Deezer flagged this album, or a track's album, as AI-generated.
+export const isDeezerAI = (item: unknown): boolean => {
+    const o = item as { deezer?: DeezerExtras; album?: { deezer?: DeezerExtras } } | null;
+    return Boolean(o?.deezer?.ai || o?.album?.deezer?.ai);
+};
 
 // --- URL detection ---------------------------------------------------------
 // www.deezer.com/{lang}/album/{id}   (the language segment is optional)

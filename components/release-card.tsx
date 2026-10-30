@@ -1,5 +1,6 @@
 import ArtistDialog from './artist-dialog';
 import SourceTag from './source-tag';
+import AITag from './ai-tag';
 import DolbyAtmosBadge, { DolbyMark } from './dolby-atmos-badge';
 import DownloadAlbumButton from './download-album-button';
 import Image from 'next/image';
@@ -320,6 +321,7 @@ const ReleaseCard = ({
             <div className='space-y-1'>
                 <div className='flex gap-1.5 items-center'>
                     <SourceTag item={result} />
+                    <AITag item={result} />
                     {(result as QobuzAlbum | QobuzTrack).parental_warning && (
                         <p
                             className='text-[10px] bg-primary text-primary-foreground p-1 rounded-[3px] aspect-square w-[18px] h-[18px] text-center justify-center items-center shrink-0 flex font-semibold'
@@ -370,9 +372,12 @@ const ReleaseCard = ({
 
                         <div className='flex w-full flex-col justify-between overflow-hidden'>
                             <div className='space-y-1.5 overflow-visible'>
-                                <DialogTitle title={formatTitle(album || result)} className='truncate overflow-visible py-0.5 pr-2'>
-                                    {formatTitle(album || result)}
-                                </DialogTitle>
+                                <div className='flex items-center gap-2 min-w-0'>
+                                    <DialogTitle title={formatTitle(album || result)} className='truncate overflow-visible py-0.5 pr-2'>
+                                        {formatTitle(album || result)}
+                                    </DialogTitle>
+                                    <AITag item={album || result} />
+                                </div>
                                 {!(getType(result) === 'artists') && (
                                     <DialogDescription title={formatArtists(result as QobuzAlbum | QobuzTrack)} className='truncate overflow-visible '>
                                         {formatArtists(result as QobuzAlbum | QobuzTrack)}

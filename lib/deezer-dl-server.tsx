@@ -71,9 +71,11 @@ function proxyAgent() {
     return undefined;
 }
 
-function getDeezerAxiosConfig(options: AxiosRequestConfig = {}): AxiosRequestConfig {
+export function getDeezerAxiosConfig(options: AxiosRequestConfig = {}): AxiosRequestConfig {
     const agent = proxyAgent();
+    // `options` first, so its headers add to these rather than replace them all.
     return {
+        ...options,
         httpAgent: agent,
         httpsAgent: agent,
         headers: {
@@ -84,8 +86,7 @@ function getDeezerAxiosConfig(options: AxiosRequestConfig = {}): AxiosRequestCon
             'Accept-Language': 'en-US,en;q=0.9',
             'X-Requested-With': 'XMLHttpRequest',
             ...options.headers
-        },
-        ...options
+        }
     };
 }
 
