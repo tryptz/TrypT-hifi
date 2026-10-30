@@ -144,6 +144,7 @@ test('Range and Content-Range headers', () => {
 
 test('Content-Type from the CDN when it names audio, else from the format', () => {
     assert.equal(deezerContentType('application/octet-stream', 'FLAC'), 'audio/flac');
+    assert.equal(deezerContentType('application/octet-stream', 'FLAC_24'), 'audio/flac');
     assert.equal(deezerContentType(undefined, 'MP3_320'), 'audio/mpeg');
     assert.equal(deezerContentType(null, 'MP3_128'), 'audio/mpeg');
     assert.equal(deezerContentType('audio/x-flac', 'FLAC'), 'audio/x-flac');

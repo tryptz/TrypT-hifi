@@ -289,6 +289,12 @@ const SettingsForm = () => {
                                         </DropdownMenuRadioGroup>
                                     </DropdownMenuContent>
                                 </DropdownMenu>
+                                {source === 'deezer' && (
+                                    <p className='text-xs text-muted-foreground'>
+                                        Either 24-bit setting gets Deezer&apos;s hi-res FLAC (up to 24-bit/192 kHz, at the rate of the track&apos;s master).
+                                        Tracks without a hi-res master download as 16-bit FLAC.
+                                    </p>
+                                )}
                             </div>
                         ) : (
                             <>

@@ -37,7 +37,7 @@ const fileParamsSchema = z
         // A striped Deezer file to decrypt on the way (signDeezerFileURL): the
         // song's id and the file's format, both covered by the signature.
         deezer: z.string().regex(/^-?\d+$/, 'Deezer ID must be numeric').optional(),
-        format: z.enum(['FLAC', 'MP3_320', 'MP3_128']).optional()
+        format: z.enum(['FLAC_24', 'FLAC', 'MP3_320', 'MP3_128']).optional()
     })
     .refine((p) => (p.deezer === undefined) === (p.format === undefined), 'deezer and format go together');
 

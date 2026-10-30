@@ -143,5 +143,5 @@ export function parseUnsatisfiedRange(header: string | null | undefined): number
 // format implies (it tends to say application/octet-stream).
 export function deezerContentType(upstream: string | null | undefined, format: DeezerStreamQuality): string {
     if (upstream && /^audio\//i.test(upstream.trim())) return upstream;
-    return format === 'FLAC' ? 'audio/flac' : 'audio/mpeg';
+    return format === 'FLAC' || format === 'FLAC_24' ? 'audio/flac' : 'audio/mpeg';
 }

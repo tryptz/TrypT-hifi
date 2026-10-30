@@ -153,6 +153,13 @@ test('HEAD gives the same headers and no body', async () => {
     assert.equal(response.headers.get('content-length'), '4001');
 });
 
+test('a hi-res (FLAC_24) file decrypts and plays as FLAC', async () => {
+    const { response, body } = await fetchLink(signDeezerFileURL(cdn, ORIGIN, { id: ID, format: 'FLAC_24' }));
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'audio/flac');
+    assert.deepEqual(body, plain);
+});
+
 test('the id and format cannot be changed, dropped or added', async () => {
     const link = new URL(signDeezerFileURL(cdn, ORIGIN, FLAC));
     const changed = new URL(link);

@@ -105,7 +105,7 @@ Downloading ALAC, hi-res lossless or Atmos from Apple needs a separately run dec
 
 ### Deezer
 
-Browsing and 30-second previews work with no setup. For full-length downloads (MP3 128/320 and FLAC), add your Deezer **ARL** cookie:
+Browsing and 30-second previews work with no setup. For full-length downloads (MP3 128/320, FLAC, and hi-res FLAC up to 24-bit/192 kHz), add your Deezer **ARL** cookie:
 
 1. Open https://www.deezer.com while logged in.
 2. Open DevTools → Application → Cookies → `deezer.com`.
@@ -114,6 +114,10 @@ Browsing and 30-second previews work with no setup. For full-length downloads (M
 ```env
 DEEZER_ARL=your_arl_cookie_value_here
 ```
+
+#### Hi-res
+
+Since October 2026 Deezer HiFi includes hi-res FLAC (Deezer's `FLAC_24` format, 24-bit at up to 192 kHz) at no extra cost. Either 24-bit **Max Download Quality** setting (`quality=27` or `quality=7`) asks for it. Deezer keeps one hi-res file per track, at whatever rate its master has (88.2 kHz, 96 kHz, 192 kHz…), and only tracks with a hi-res master have one. Every request asks Deezer for a list, best first (`FLAC_24`, `FLAC`, `MP3_320`, `MP3_128`), so a track without a hi-res master comes back as 16-bit FLAC instead of failing. The link names the format Deezer actually served (`format=FLAC_24` or `format=FLAC`). The hi-res file is encrypted the same way as the others, so `decrypted=1` works on it unchanged.
 
 #### Playing Deezer in a browser
 

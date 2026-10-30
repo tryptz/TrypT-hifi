@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { checkDeezerTrackAvailability, getDeezerDownloadURL, getDeezerTrackStreamData } from '@/lib/deezer-dl-server';
+import { checkDeezerTrackAvailability, getDeezerDownloadFile } from '@/lib/deezer-dl-server';
 import z from 'zod';
 
 // Parameters schema. Kept module-private: a Next.js route file may only export
@@ -41,15 +41,9 @@ export async function GET(request: NextRequest) {
             );
         }
         
-        // Fall back to the best quality this ARL can actually serve.
-        // getDeezerDownloadURL maps these keys to Deezer's own levels (1/3/9).
-        const { flac, mp3_320 } = availability.available_qualities;
-        const wantsFlac = quality === '6' || quality === '27';
-        let bestQuality = quality;
-        if (wantsFlac && !flac) bestQuality = '7';
-        if (bestQuality === '7' && !mp3_320) bestQuality = '5';
-        
-        const downloadUrl = await getDeezerDownloadURL(track_id, bestQuality);
+        // Deezer falls back on its own (FLAC_24 -> FLAC -> MP3) to the best file
+        // this track has, and says which one it served.
+        const { url: downloadUrl, format } = await getDeezerDownloadFile(track_id, quality);
 
         if (!downloadUrl) {
             return new NextResponse(
@@ -61,15 +55,14 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        const trackMeta = await getDeezerTrackStreamData(track_id);
         return new NextResponse(
             JSON.stringify({
                 success: true,
                 data: {
                     url: downloadUrl,
-                    quality: bestQuality,
+                    quality: format,
                     track_id: track_id,
-                    title: (trackMeta.SNG_TITLE as string) || (availability as { title?: string })?.title || undefined
+                    title: availability.title || undefined
                 }
             }),
             { status: 200 }
