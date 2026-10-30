@@ -19,6 +19,7 @@ TrypT-hifi started as a fork of [Qobuz-DL](https://github.com/QobuzDL/Qobuz-DL) 
     - [Deezer](#deezer)
     - [TIDAL](#tidal)
     - [Access password](#access-password)
+    - [Sharing to Tryptify](#sharing-to-tryptify)
     - [Discord bot button](#discord-bot-button)
 - [Running with Docker](#running-with-docker)
 - [Deploying](#deploying)
@@ -38,6 +39,8 @@ TrypT-hifi started as a fork of [Qobuz-DL](https://github.com/QobuzDL/Qobuz-DL) 
 - **Dolby Atmos** downloads from TIDAL (see [TIDAL](#tidal)).
 - **Country picker** for Qobuz, so you can use tokens from different regions in one instance.
 - **Light and dark themes**, an installable **PWA**, and a built-in changelog.
+- **Share to Tryptify.** A share button on every album and track makes a `tryptify.com` link that opens and plays it in Tryptify; pasted in Discord it shows the cover and a 30-second preview.
+- **AI-generated tag** on Deezer albums that Deezer's own detector flagged (see [Deezer](#deezer)).
 - **Optional Discord bot** with search, track/album info, downloads and album stats.
 
 ## Quick start
@@ -194,7 +197,25 @@ Set `ACCESS_PASSWORD` to make the whole site need a password:
 - **Tryptify** asks for it under the server's address (Settings › Connections › Add API, and the web player's Trypt HiFi box) and sends it as the `X-Access-Key` header. Stream links the player fetches by itself (`/api/tidal/stream-file`, `/api/tidal/atmos-file`) carry it as `access_key=` in the address instead, since an audio player can't send headers.
 - **The Discord bot** reads the same `ACCESS_PASSWORD` from `.env` and sends it too.
 
-Without the password, API routes answer `401` and pages go to `/unlock`. A few routes stay open because they carry their own proof: signed file links (`/api/file`, `/api/apple/files/…`), the Apple decrypt queue (`APPLE_JOB_QUEUE_TOKEN`) and a job's progress by its token. Leave `ACCESS_PASSWORD` unset and the site is open, as before.
+Without the password, API routes answer `401` and pages go to `/unlock`. A few routes stay open because they carry their own proof: signed file links (`/api/file`, `/api/apple/files/…`), the Apple decrypt queue (`APPLE_JOB_QUEUE_TOKEN`) and a job's progress by its token, and a shared link's preview (`/api/share/meta`, `/api/share/preview`, see below). Leave `ACCESS_PASSWORD` unset and the site is open, as before.
+
+### Sharing to Tryptify
+
+The share button on an album or track asks `/api/share/link` (behind the password) for a link like:
+
+```
+https://tryptify.com/listen/deezer/album/6575789/track/67238728?s=Q0iqjfn2xWlNUgxv
+```
+
+- **With Tryptify installed**, the phone opens it in the app, which plays the track and carries on through the album (an album link plays from track 1). The link always names the album, because that is what Tryptify can load from any source.
+- **Pasted in Discord** (or anywhere that reads link previews), tryptify.com's page shows the title, artist and cover, plus a video Discord can play: the cover as a still frame and a 30-second clip in **Opus at 256 kbps**, as WebM. Discord plays `og:video` but not `og:audio`, hence the video. tryptify.com gets all of it from this server's `/api/share/meta`, and the video is `/api/share/preview`.
+- The clip is cut from the song on Deezer, matched by ISRC for the other sources: from the full FLAC about a third of the way in when `DEEZER_ARL` is set, otherwise from Deezer's own 30-second MP3 preview. It needs `ffmpeg` on the server (the Docker image has it). Each clip is made once, as soon as the link is created, and kept on disk.
+- `s=` is a signature (an HMAC with `FILE_PROXY_SECRET`) over the source, album and track. The two preview routes are open, since Discord has no password, but they answer only links this server signed, so nobody else can make it fetch or encode songs.
+
+Optional settings:
+
+- `SHARE_LINK_BASE`: where links point (default `https://tryptify.com`).
+- `SHARE_CACHE_DIR`: where clips are kept (default: a folder in the system's temp directory).
 
 ### Discord bot button
 

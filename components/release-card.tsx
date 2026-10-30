@@ -1,6 +1,7 @@
 import ArtistDialog from './artist-dialog';
 import SourceTag from './source-tag';
 import AITag from './ai-tag';
+import ShareButton from './share-button';
 import DolbyAtmosBadge, { DolbyMark } from './dolby-atmos-badge';
 import DownloadAlbumButton from './download-album-button';
 import Image from 'next/image';
@@ -246,6 +247,7 @@ const ReleaseCard = ({
                                         {startingPlayback ? <Loader2Icon className='animate-spin' /> : <PlayIcon />}
                                     </Button>
                                 )}
+                                <ShareButton item={result as QobuzAlbum | QobuzTrack} />
                                 {(result as QobuzTrack).album ? null : (
                                     <Button
                                         size='icon'
@@ -458,6 +460,12 @@ const ReleaseCard = ({
                                                             <PlayIcon className='!size-4' />
                                                         </Button>
                                                     )}
+                                                    <ShareButton
+                                                        item={track}
+                                                        album={fetchedAlbumData}
+                                                        className='md:group-hover:flex md:hidden justify-center aspect-square h-6 w-6 [&_svg]:size-5 hover:bg-transparent'
+                                                        iconClassName='!size-4'
+                                                    />
                                                     {track.streamable && (
                                                         <Button
                                                             title={`Download '${formatTitle(track)}'`}

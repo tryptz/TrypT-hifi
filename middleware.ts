@@ -19,6 +19,9 @@ function isOpen(pathname: string): boolean {
         pathname === '/api/apple/jobs' ||
         // A job's progress, by the job's own unguessable token.
         /^\/api\/apple\/job\/[^/]+$/.test(pathname) ||
+        // A shared link's preview for Discord; answers only links this server signed (lib/share-server.ts).
+        pathname === '/api/share/meta' ||
+        pathname === '/api/share/preview' ||
         // Static files (the logo, ffmpeg's wasm, the PWA's icons).
         (!pathname.startsWith('/api/') && /\.[a-z0-9]+$/i.test(pathname))
     );
