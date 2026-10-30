@@ -31,6 +31,10 @@ RUN apk add --no-cache ca-certificates curl \
             "tailscale_${TSVERSION}_amd64/tailscale" "tailscale_${TSVERSION}_amd64/tailscaled" \
     && mkdir -p /var/run/tailscale /var/lib/tailscale
 
+# ffmpeg (with libopus and libvpx) makes the preview a shared link shows in
+# Discord: the cover and a 30-second clip as WebM (lib/share-server.ts).
+RUN apk add --no-cache ffmpeg
+
 # Next.js standalone output: a minimal server + traced node_modules.
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./

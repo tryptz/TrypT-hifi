@@ -19,6 +19,7 @@ TrypT-hifi started as a fork of [Qobuz-DL](https://github.com/QobuzDL/Qobuz-DL) 
     - [Deezer](#deezer)
     - [TIDAL](#tidal)
     - [Access password](#access-password)
+    - [Sharing to Tryptify](#sharing-to-tryptify)
     - [Discord bot button](#discord-bot-button)
 - [Running with Docker](#running-with-docker)
 - [Deploying](#deploying)
@@ -38,6 +39,8 @@ TrypT-hifi started as a fork of [Qobuz-DL](https://github.com/QobuzDL/Qobuz-DL) 
 - **Dolby Atmos** downloads from TIDAL (see [TIDAL](#tidal)).
 - **Country picker** for Qobuz, so you can use tokens from different regions in one instance.
 - **Light and dark themes**, an installable **PWA**, and a built-in changelog.
+- **Share to Tryptify.** A share button on every album and track makes a `tryptify.com` link that opens and plays it in Tryptify; pasted in Discord it shows the cover and a 30-second preview.
+- **AI-generated tag** on Deezer albums that Deezer's own detector flagged (see [Deezer](#deezer)).
 - **Optional Discord bot** with search, track/album info, downloads and album stats.
 
 ## Quick start
@@ -119,6 +122,10 @@ DEEZER_ARL=your_arl_cookie_value_here
 
 Since October 2026 Deezer HiFi includes hi-res FLAC (Deezer's `FLAC_24` format, 24-bit at up to 192 kHz) at no extra cost. Either 24-bit **Max Download Quality** setting (`quality=27` or `quality=7`) asks for it. Deezer keeps one hi-res file per track, at whatever rate its master has (88.2 kHz, 96 kHz, 192 kHz…), and only tracks with a hi-res master have one. Every request asks Deezer for a list, best first (`FLAC_24`, `FLAC`, `MP3_320`, `MP3_128`), so a track without a hi-res master comes back as 16-bit FLAC instead of failing. The link names the format Deezer actually served (`format=FLAC_24` or `format=FLAC`). The hi-res file is encrypted the same way as the others, so `decrypted=1` works on it unchanged.
 
+#### AI-generated tag
+
+Deezer runs its own detector for music made with generative AI (Suno, Udio and the like) and labels the albums it catches as "AI-generated content". With `DEEZER_ARL` set, Deezer results show the same verdict as a pink **AI** tag on the album card and in the album's dialog. Deezer's public API doesn't expose it, so the server asks Deezer's own GraphQL API (`pipe.deezer.com`, `Album.hasIdentifiedAIContent`), batched and cached for six hours. Without an ARL, or if that lookup fails, results simply come back untagged.
+
 #### Playing Deezer in a browser
 
 Deezer's full-length files are encrypted ("striped": every third 2048-byte block is Blowfish-encrypted with a key made from the song's ID). `/api/deezer/download-music` hands back a signed `/api/file` link to the file exactly as Deezer serves it, which Tryptify's Android app decrypts itself. No browser can play that, so add `decrypted=1` and the link decrypts on the server instead:
@@ -190,7 +197,26 @@ Set `ACCESS_PASSWORD` to make the whole site need a password:
 - **Tryptify** asks for it under the server's address (Settings › Connections › Add API, and the web player's Trypt HiFi box) and sends it as the `X-Access-Key` header. Stream links the player fetches by itself (`/api/tidal/stream-file`, `/api/tidal/atmos-file`) carry it as `access_key=` in the address instead, since an audio player can't send headers.
 - **The Discord bot** reads the same `ACCESS_PASSWORD` from `.env` and sends it too.
 
-Without the password, API routes answer `401` and pages go to `/unlock`. A few routes stay open because they carry their own proof: signed file links (`/api/file`, `/api/apple/files/…`), the Apple decrypt queue (`APPLE_JOB_QUEUE_TOKEN`) and a job's progress by its token. Leave `ACCESS_PASSWORD` unset and the site is open, as before.
+Without the password, API routes answer `401` and pages go to `/unlock`. A few routes stay open because they carry their own proof: signed file links (`/api/file`, `/api/apple/files/…`), the Apple decrypt queue (`APPLE_JOB_QUEUE_TOKEN`) and a job's progress by its token, and a shared link's preview (`/api/share/meta`, `/api/share/preview`, see below). Leave `ACCESS_PASSWORD` unset and the site is open, as before.
+
+### Sharing to Tryptify
+
+The share button on an album or track asks `/api/share/link` (behind the password) for a link like:
+
+```
+https://tryptify.com/listen/deezer/album/6575789/track/67238728?isrc=USQX91300101&title=Give+Life+Back+to+Music&artist=Daft+Punk&duration=274&s=Q0iqjfn2xWlNUgxv
+```
+
+- **With Tryptify installed**, the phone opens it in the app, which plays the track and carries on through the album (an album link plays from track 1). The link always names the album, because that is what Tryptify can load from any source.
+- **It plays on any service.** The link carries the song's ISRC (an album link, its first track's), title, artist and length, filled in by this server when the link is made. A listener whose Tryptify hasn't the service it was shared from gets the same song from one they have: by ISRC, else by title, artist and length. These are not signed; they only help the app.
+- **Pasted in Discord** (or anywhere that reads link previews), tryptify.com's page shows the title, artist and cover, plus a video Discord can play: the cover as a still frame and a 30-second clip in **Opus at 256 kbps**, as WebM. Discord plays `og:video` but not `og:audio`, hence the video. tryptify.com gets all of it from this server's `/api/share/meta`, and the video is `/api/share/preview`.
+- The clip is cut from the song on Deezer, matched by ISRC for the other sources: from the full FLAC about a third of the way in when `DEEZER_ARL` is set, otherwise from Deezer's own 30-second MP3 preview. It needs `ffmpeg` on the server (the Docker image has it). Each clip is made once, as soon as the link is created, and kept on disk.
+- `s=` is a signature (an HMAC with `FILE_PROXY_SECRET`) over the source, album and track (the path, not the query). The two preview routes are open, since Discord has no password, but they answer only links this server signed, so nobody else can make it fetch or encode songs.
+
+Optional settings:
+
+- `SHARE_LINK_BASE`: where links point (default `https://tryptify.com`).
+- `SHARE_CACHE_DIR`: where clips are kept (default: a folder in the system's temp directory).
 
 ### Discord bot button
 

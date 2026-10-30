@@ -13,6 +13,7 @@ import {
     parseDeezerArtistData
 } from './deezer';
 import { APIOptionProps, FetchedQobuzAlbum, QobuzArtistResults, QobuzSearchResults } from './qobuz-dl';
+import { annotateDeezerAI } from './deezer-ai-server';
 
 // ---------------------------------------------------------------------------
 // Server-only Deezer public-API client.
@@ -161,10 +162,10 @@ export async function search(query: string, limit: number = 10, offset: number =
     const urlMatch = matchDeezerUrl(query);
     if (urlMatch) {
         if (urlMatch.kind === 'albums')
-            return normalizeDeezerSearch(query, limit, offset, { data: [await fetchAlbum(urlMatch.id, options)], total: 1 }, empty, empty, 'albums');
+            return annotateDeezerAI(normalizeDeezerSearch(query, limit, offset, { data: [await fetchAlbum(urlMatch.id, options)], total: 1 }, empty, empty, 'albums'));
         if (urlMatch.kind === 'artists')
             return normalizeDeezerSearch(query, limit, offset, empty, empty, { data: [await fetchArtist(urlMatch.id, options)], total: 1 }, 'artists');
-        return normalizeDeezerSearch(query, limit, offset, empty, { data: [await fetchTrack(urlMatch.id, options)], total: 1 }, empty, 'tracks');
+        return annotateDeezerAI(normalizeDeezerSearch(query, limit, offset, empty, { data: [await fetchTrack(urlMatch.id, options)], total: 1 }, empty, 'tracks'));
     }
 
     // Deezer searches one type per endpoint, so fan out and merge into one result.
@@ -174,12 +175,12 @@ export async function search(query: string, limit: number = 10, offset: number =
         deezerRequest<DeezerList<DeezerTrack>>('/search/track', params, options),
         deezerRequest<DeezerList<DeezerArtist>>('/search/artist', params, options)
     ]);
-    return normalizeDeezerSearch(query, limit, offset, albums, tracks, artists);
+    return annotateDeezerAI(normalizeDeezerSearch(query, limit, offset, albums, tracks, artists));
 }
 
 export async function getAlbumInfo(album_id: string, options: APIOptionProps = {}): Promise<FetchedQobuzAlbum> {
     const [album, tracks] = await Promise.all([fetchAlbum(album_id, options), fetchAlbumTracks(album_id, options)]);
-    return normalizeDeezerAlbumFull(album, tracks);
+    return annotateDeezerAI(normalizeDeezerAlbumFull(album, tracks));
 }
 
 // Returns the already-parsed inner `artist` object, like the Apple client, so the
@@ -191,7 +192,7 @@ export async function getArtist(artist_id: string, options: APIOptionProps = {})
         deezerRequest<DeezerList<DeezerTrack>>(`/artist/${artist_id}/top`, { limit: 10 }, options),
         fetchDiscography(artist_id, options)
     ]);
-    return parseDeezerArtistData(artist, top.data || [], albums).artist;
+    return annotateDeezerAI(parseDeezerArtistData(artist, top.data || [], albums).artist);
 }
 
 export async function getArtistReleases(
@@ -204,10 +205,10 @@ export async function getArtistReleases(
     // Deezer can't filter by release type server-side, so filter the discography here.
     const [artist, albums] = await Promise.all([fetchArtist(artist_id, options), fetchDiscography(artist_id, options)]);
     const matching = albums.filter((album) => deezerReleaseBucket(album.record_type) === release_type);
-    return {
+    return annotateDeezerAI({
         items: matching.slice(offset, offset + limit).map((album) => normalizeDeezerAlbum(album, artist)),
         has_more: offset + limit < matching.length
-    };
+    });
 }
 
 // Preview URLs carry a short-lived signed token, so always fetch a fresh one.
