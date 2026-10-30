@@ -9,7 +9,9 @@ export const dynamic = 'force-dynamic';
 // shape (track_id + Qobuz quality id) and same response ({ success, data: { url } }
 // pointing at a signed /api/file link), so the download pipeline and player treat
 // every source identically. quality ids map through getDeezerDownloadURL
-// (27/6 -> FLAC, 7 -> MP3 320, 5 -> MP3 128), always to the full-length file.
+// (27/7 -> hi-res FLAC_24, 6 -> FLAC, 5 -> MP3 128), always to the full-length file.
+// A track with no hi-res master falls back to FLAC, and the link names the
+// format Deezer actually served.
 //
 // The file is Deezer's own, still striped (lib/deezer-decrypt.ts), which
 // Tryptify's app decrypts itself. A browser cannot, so `decrypted=1` asks for a

@@ -15,13 +15,14 @@ if (typeof window === 'undefined') {
 // Flow (validated end-to-end against the live API, mirroring kmille/deezer-downloader):
 //   1. GET https://www.deezer.com/ajax/gw-light.php?method=deezer.getUserData with the
 //      arl cookie -> returns the account's license_token and web_sound_quality flags
-//      (lossless = FLAC available on the subscription).
+//      (lossless = FLAC available on the subscription, 24-bit included).
 //   2. GET the public track page https://www.deezer.com/us/track/{id}; the SSR JSON
 //      embeds DATA.TRACK_TOKEN (+ MD5_ORIGIN, FILESIZE_*). Without an ARL the page
 //      still renders but only carries 30s-preview rights; with the ARL the token
 //      unlocks the full track.
 //   3. POST https://media.deezer.com/v1/get_url with the license_token + TRACK_TOKEN
-//      -> a signed, unencrypted CDN URL for the whole file (FLAC or MP3 320).
+//      and a list of formats, best first -> a signed CDN URL for the whole file in
+//      the first format of the list the track has, and the name of that format.
 //
 // The token from step 2/3 is short-lived and per-request, so nothing is cached here:
 // every call fetches fresh credentials. Why not api.deezer.com's /track/{id}?
@@ -49,7 +50,12 @@ type DeezerUserData = {
     };
 };
 
-export type DeezerStreamQuality = 'FLAC' | 'MP3_320' | 'MP3_128';
+export type DeezerStreamQuality = 'FLAC_24' | 'FLAC' | 'MP3_320' | 'MP3_128';
+
+// Best first, the order Deezer's own web player asks in. FLAC_24 is the hi-res
+// file (24-bit, up to 192 kHz) Deezer added to HiFi in October 2026; only
+// tracks with a hi-res master have one (FILESIZE_FLAC_24 > 0), the rest get FLAC.
+export const DEEZER_FORMATS: DeezerStreamQuality[] = ['FLAC_24', 'FLAC', 'MP3_320', 'MP3_128'];
 
 // What the web session reports for this ARL: the best lossless tier plus the
 // account's available formats, so callers can fall back before asking the CDN.
@@ -112,7 +118,8 @@ export async function getDeezerSession(options: AxiosRequestConfig = {}): Promis
     }
     const quality = user.USER.OPTIONS?.web_sound_quality ?? {};
     const formats: DeezerStreamQuality[] = [];
-    if (quality.lossless) formats.push('FLAC');
+    // There is no flag of its own for hi-res: a HiFi account gets FLAC_24 too.
+    if (quality.lossless) formats.push('FLAC_24', 'FLAC');
     if (quality.high) formats.push('MP3_320');
     if (quality.standard) formats.push('MP3_128');
     const info: DeezerSessionInfo = {
@@ -141,6 +148,7 @@ export type DeezerTrackStreamData = {
     FILESIZE_MP3_128?: string | number;
     FILESIZE_MP3_320?: string | number;
     FILESIZE_FLAC?: string | number;
+    FILESIZE_FLAC_24?: string | number;
     FALLBACK?: { SNG_ID: string; TRACK_TOKEN: string } | null;
 };
 
@@ -158,27 +166,28 @@ export async function getDeezerTrackStreamData(trackId: string | number, options
     return { ...data, SNG_ID: String(data.SNG_ID ?? trackId) } as DeezerTrackStreamData;
 }
 
-function bestFormat(session: DeezerSessionInfo, quality: DeezerStreamQuality | undefined): DeezerStreamQuality {
-    const candidates = quality ? [quality, ...session.formats] : session.formats;
-    for (const candidate of candidates) {
-        if (session.formats.includes(candidate)) return candidate;
-    }
-    return 'MP3_128';
+// The formats to ask for: `preferred` and everything below it that the account
+// has. Deezer serves the first one the track has, so a track without a hi-res
+// master still comes back as FLAC rather than not at all.
+export function deezerFormatLadder(session: Pick<DeezerSessionInfo, 'formats'>, preferred: DeezerStreamQuality = 'FLAC'): DeezerStreamQuality[] {
+    const ladder = DEEZER_FORMATS.slice(DEEZER_FORMATS.indexOf(preferred)).filter((format) => session.formats.includes(format));
+    return ladder.length ? ladder : ['MP3_128'];
 }
 
-// Exchange a TRACK_TOKEN for a signed, unencrypted CDN URL good for the whole file.
-// `error` throws with the API's own message (e.g. "country not available").
+// Exchange a TRACK_TOKEN for a signed CDN URL good for the whole file, in the
+// first of `formats` the track has. `error` throws with the API's own message
+// (e.g. "country not available").
 export async function getDeezerStreamURL(
     trackToken: string,
-    format: DeezerStreamQuality,
+    formats: DeezerStreamQuality[],
     licenseToken: string,
     options: AxiosRequestConfig = {}
-): Promise<string> {
+): Promise<{ url: string; format: DeezerStreamQuality }> {
     const response = await axios.post<any>(
         'https://media.deezer.com/v1/get_url',
         {
             license_token: licenseToken,
-            media: [{ type: 'FULL', formats: [{ cipher: 'BF_CBC_STRIPE', format }] }],
+            media: [{ type: 'FULL', formats: formats.map((format) => ({ cipher: 'BF_CBC_STRIPE', format })) }],
             track_tokens: [trackToken]
         },
         { ...getDeezerAxiosConfig(options), timeout: options.timeout ?? 15000 }
@@ -186,9 +195,12 @@ export async function getDeezerStreamURL(
     const payload = response.data;
     const first = payload?.data?.[0];
     if (first?.errors?.length) throw new Error(`Deezer media error: ${first.errors[0]?.message || first.errors[0]?.code}`);
-    const url = first?.media?.[0]?.sources?.find((s: any) => s?.url)?.url;
+    const media = first?.media?.[0];
+    const url = media?.sources?.find((s: any) => s?.url)?.url;
     if (!url) throw new Error('Deezer media error: no stream source returned');
-    return url as string;
+    // The format Deezer picked from the list, which names the file's codec.
+    const format: DeezerStreamQuality = formats.includes(media.format) ? media.format : formats[0];
+    return { url: url as string, format };
 }
 
 // Full flow: fresh session credentials + fresh TRACK_TOKEN -> full-length stream URL.
@@ -201,11 +213,10 @@ export async function getDeezerFullStreamURL(
         getDeezerSession(options),
         getDeezerTrackStreamData(trackId, options)
     ]);
-    const format = bestFormat(session, preferred);
+    const formats = deezerFormatLadder(session, preferred);
     try {
         return {
-            url: await getDeezerStreamURL(track.TRACK_TOKEN, format, session.license_token, options),
-            format,
+            ...(await getDeezerStreamURL(track.TRACK_TOKEN, formats, session.license_token, options)),
             // The song the file belongs to, whose id makes its decryption key.
             id: track.SNG_ID,
             duration: Number(track.DURATION) || 0,
@@ -217,8 +228,7 @@ export async function getDeezerFullStreamURL(
         // via FALLBACK; retry there before giving up.
         if (track.FALLBACK?.TRACK_TOKEN) {
             return {
-                url: await getDeezerStreamURL(track.FALLBACK.TRACK_TOKEN, format, session.license_token, options),
-                format,
+                ...(await getDeezerStreamURL(track.FALLBACK.TRACK_TOKEN, formats, session.license_token, options)),
                 // The file is the fallback song's, and so is its key.
                 id: String(track.FALLBACK.SNG_ID || track.SNG_ID),
                 duration: Number(track.DURATION) || 0,
@@ -230,7 +240,7 @@ export async function getDeezerFullStreamURL(
     }
 }
 
-// Quality keys shared with the Qobuz download pipeline: FLAC -> MP3_320 -> MP3_128,
+// Quality keys shared with the Qobuz download pipeline: FLAC_24 -> FLAC -> MP3_320 -> MP3_128,
 // in that order, based on what this ARL's subscription actually reports.
 export function pickDeezerFormat(session: DeezerSessionInfo): DeezerStreamQuality {
     return session.best;
@@ -245,9 +255,19 @@ export async function getDeezerDownloadURL(trackId: string | number, quality: De
 // to (the FALLBACK song's when Deezer served that instead) and the format it
 // actually came in (the subscription may not have the one asked for).
 export async function getDeezerDownloadFile(trackId: string | number, quality: DeezerStreamQuality | '27' | '7' | '6' | '5' = '27', options: AxiosRequestConfig = {}): Promise<{ url: string; format: DeezerStreamQuality; id: string }> {
-    const requested: DeezerStreamQuality = quality === '27' || quality === '6' ? 'FLAC' : quality === '7' ? 'MP3_320' : quality === '5' ? 'MP3_128' : (quality as DeezerStreamQuality);
+    const requested = deezerQualityFormat(quality);
     const { url, format, id } = await getDeezerFullStreamURL(trackId, requested, options);
     return { url, format, id };
+}
+
+// Qobuz quality ids to the Deezer format to start from: the two 24-bit settings
+// (27 = 192 kHz, 7 = 96 kHz) to FLAC_24, 16-bit (6) to FLAC, 5 to MP3_128.
+// Deezer has one hi-res file per track, at whatever rate its master is.
+export function deezerQualityFormat(quality: DeezerStreamQuality | '27' | '7' | '6' | '5'): DeezerStreamQuality {
+    if (quality === '27' || quality === '7') return 'FLAC_24';
+    if (quality === '6') return 'FLAC';
+    if (quality === '5') return 'MP3_128';
+    return quality;
 }
 
 // Check if a track is downloadable (lossless/FLAC available with the current ARL)
@@ -263,7 +283,8 @@ export async function checkDeezerTrackAvailability(trackId: string | number, opt
         available_qualities: {
             mp3_128: (size(track.FILESIZE_MP3_128) || 0) > 0,
             mp3_320: (size(track.FILESIZE_MP3_320) || 0) > 0,
-            flac: (size(track.FILESIZE_FLAC) || 0) > 0
+            flac: (size(track.FILESIZE_FLAC) || 0) > 0,
+            flac_24: (size(track.FILESIZE_FLAC_24) || 0) > 0
         }
     };
 }
@@ -272,6 +293,7 @@ export async function getDeezerTrackInfo(trackId: string | number, options: Axio
     const track = await getDeezerTrackStreamData(trackId, options);
     return {
         ...track,
+        FILESIZE_FLAC_24: Number(track.FILESIZE_FLAC_24 ?? 0) || 0,
         FILESIZE_FLAC: Number(track.FILESIZE_FLAC ?? 0) || 0,
         FILESIZE_MP3_320: Number(track.FILESIZE_MP3_320 ?? 0) || 0,
         FILESIZE_MP3_128: Number(track.FILESIZE_MP3_128 ?? 0) || 0
