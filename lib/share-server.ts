@@ -12,8 +12,10 @@ import { stripeDecryptStream } from './deezer-decrypt';
 // Server only. Links that open a release in Tryptify, and the preview Discord
 // shows for them.
 //
-// A link is https://tryptify.com/listen/<source>/album/<album>[/track/<track>]?s=<sig>:
-// the Tryptify app opens it and plays the album (from that track, if named);
+// A link is https://tryptify.com/listen/<source>/album/<album>[/track/<track>]?isrc=…&title=…&artist=…&duration=…&s=<sig>:
+// the Tryptify app opens it and plays the album (from that track, if named),
+// from that source when the listener has it, else from whichever service they
+// do have: the song's ISRC, title, artist and length let the app find it there;
 // anyone else gets tryptify.com's page, whose Open Graph tags come from
 // /api/share/meta and show the cover and /api/share/preview, a WebM of the
 // cover with a 30-second clip in Opus at 256 kbps. Discord plays og:video but
@@ -36,6 +38,8 @@ export type ShareMeta = {
     album: string;
     cover: string | null;
     duration: number;
+    // The track's ISRC; for an album, its first track's.
+    isrc: string | null;
 };
 
 const CLIP_SECONDS = 30;
@@ -66,8 +70,18 @@ export function verifyShareSignature(target: ShareTarget, signature: string | nu
     return given.length === expected.length && crypto.timingSafeEqual(given, expected);
 }
 
-export function shareURL(target: ShareTarget): string {
-    return `${linkBase()}${sharePath(target)}?s=${shareSignature(target)}`;
+// The link, with what lets the listener's Tryptify find the song on another
+// service when it hasn't this one: its ISRC, title, artist and (for a track)
+// length. Those are not signed: they only help the app, which needs no
+// signature, while the preview routes go by the signed path alone.
+export function shareURL(target: ShareTarget, meta?: Pick<ShareMeta, 'isrc' | 'title' | 'artist' | 'duration' | 'kind'>): string {
+    const query = new URLSearchParams();
+    if (meta?.isrc) query.set('isrc', meta.isrc);
+    if (meta?.title) query.set('title', meta.title.slice(0, 200));
+    if (meta?.artist) query.set('artist', meta.artist.slice(0, 200));
+    if (meta?.kind === 'track' && meta.duration > 0) query.set('duration', String(Math.round(meta.duration)));
+    query.set('s', shareSignature(target));
+    return `${linkBase()}${sharePath(target)}?${query}`;
 }
 
 async function loadAlbum({ source, album }: ShareTarget): Promise<FetchedQobuzAlbum> {
@@ -104,7 +118,8 @@ export async function getShareMeta(target: ShareTarget): Promise<ShareMeta> {
         artist: (kind === 'track' && track?.performer?.name) || album.artist?.name || '',
         album: album.title,
         cover: coverOf(album),
-        duration: kind === 'track' ? track?.duration ?? 0 : album.duration ?? 0
+        duration: kind === 'track' ? track?.duration ?? 0 : album.duration ?? 0,
+        isrc: track?.isrc && /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/i.test(track.isrc) ? track.isrc.toUpperCase() : null
     };
 }
 

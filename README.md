@@ -204,13 +204,14 @@ Without the password, API routes answer `401` and pages go to `/unlock`. A few r
 The share button on an album or track asks `/api/share/link` (behind the password) for a link like:
 
 ```
-https://tryptify.com/listen/deezer/album/6575789/track/67238728?s=Q0iqjfn2xWlNUgxv
+https://tryptify.com/listen/deezer/album/6575789/track/67238728?isrc=USQX91300101&title=Give+Life+Back+to+Music&artist=Daft+Punk&duration=274&s=Q0iqjfn2xWlNUgxv
 ```
 
 - **With Tryptify installed**, the phone opens it in the app, which plays the track and carries on through the album (an album link plays from track 1). The link always names the album, because that is what Tryptify can load from any source.
+- **It plays on any service.** The link carries the song's ISRC (an album link, its first track's), title, artist and length, filled in by this server when the link is made. A listener whose Tryptify hasn't the service it was shared from gets the same song from one they have: by ISRC, else by title, artist and length. These are not signed; they only help the app.
 - **Pasted in Discord** (or anywhere that reads link previews), tryptify.com's page shows the title, artist and cover, plus a video Discord can play: the cover as a still frame and a 30-second clip in **Opus at 256 kbps**, as WebM. Discord plays `og:video` but not `og:audio`, hence the video. tryptify.com gets all of it from this server's `/api/share/meta`, and the video is `/api/share/preview`.
 - The clip is cut from the song on Deezer, matched by ISRC for the other sources: from the full FLAC about a third of the way in when `DEEZER_ARL` is set, otherwise from Deezer's own 30-second MP3 preview. It needs `ffmpeg` on the server (the Docker image has it). Each clip is made once, as soon as the link is created, and kept on disk.
-- `s=` is a signature (an HMAC with `FILE_PROXY_SECRET`) over the source, album and track. The two preview routes are open, since Discord has no password, but they answer only links this server signed, so nobody else can make it fetch or encode songs.
+- `s=` is a signature (an HMAC with `FILE_PROXY_SECRET`) over the source, album and track (the path, not the query). The two preview routes are open, since Discord has no password, but they answer only links this server signed, so nobody else can make it fetch or encode songs.
 
 Optional settings:
 

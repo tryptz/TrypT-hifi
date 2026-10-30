@@ -17,6 +17,23 @@ test('an album link has no track', () => {
     assert.equal(new URL(shareURL({ source: 'qobuz', album: 'abc123xyz' })).pathname, '/listen/qobuz/album/abc123xyz');
 });
 
+test('the song\'s ISRC, title, artist and length ride along, so any service can play it', () => {
+    const target = { source: 'deezer' as const, album: '6575789', track: '67238728' };
+    const url = new URL(
+        shareURL(target, { kind: 'track', isrc: 'USQX91300101', title: 'Give Life Back to Music', artist: 'Daft Punk', duration: 274.4 })
+    );
+    assert.equal(url.searchParams.get('isrc'), 'USQX91300101');
+    assert.equal(url.searchParams.get('title'), 'Give Life Back to Music');
+    assert.equal(url.searchParams.get('artist'), 'Daft Punk');
+    assert.equal(url.searchParams.get('duration'), '274');
+    // The signature is the same with or without them: it covers the path only.
+    assert.equal(url.searchParams.get('s'), shareSignature(target));
+    // An album link has no length (it would be the album's).
+    const album = new URL(shareURL({ source: 'qobuz', album: 'abc' }, { kind: 'album', isrc: null, title: 'RAM', artist: 'Daft Punk', duration: 4464 }));
+    assert.equal(album.searchParams.get('duration'), null);
+    assert.equal(album.searchParams.get('isrc'), null);
+});
+
 test('the signature covers the source, the album and the track', () => {
     const target = { source: 'deezer' as const, album: '6575789', track: '67238728' };
     const s = shareSignature(target);
