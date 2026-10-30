@@ -6,7 +6,9 @@ import z from 'zod';
 // HTTP handlers and route config, so exporting this fails the build.
 const downloadParamsSchema = z.object({
     track_id: z.string().regex(/^\d+$/, 'ID must be numeric'),
-    quality: z.enum(['5', '7', '6', '27']).default('27')
+    // The Qobuz quality ids, or a Deezer format by name: MP3_320 has no id of
+    // its own (7 asks for hi-res), so it is asked for by name.
+    quality: z.enum(['5', '7', '6', '27', 'FLAC_24', 'FLAC', 'MP3_320', 'MP3_128']).default('27')
 });
 
 export async function GET(request: NextRequest) {

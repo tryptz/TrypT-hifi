@@ -9,7 +9,9 @@ export const dynamic = 'force-dynamic';
 // shape (track_id + Qobuz quality id) and same response ({ success, data: { url } }
 // pointing at a signed /api/file link), so the download pipeline and player treat
 // every source identically. quality ids map through getDeezerDownloadURL
-// (27/7 -> hi-res FLAC_24, 6 -> FLAC, 5 -> MP3 128), always to the full-length file.
+// (27/7 -> hi-res FLAC_24, 6 -> FLAC, 5 -> MP3 128), always to the full-length file;
+// a Deezer format's own name (FLAC_24, FLAC, MP3_320, MP3_128) is taken as well,
+// the only way to ask for MP3 320.
 // A track with no hi-res master falls back to FLAC, and the link names the
 // format Deezer actually served.
 //
@@ -18,7 +20,8 @@ export const dynamic = 'force-dynamic';
 // link /api/file decrypts on the way instead; the response keeps its shape.
 const downloadParamsSchema = z.object({
     track_id: z.string().regex(/^\d+$/, 'ID must be numeric'),
-    quality: z.enum(['27', '7', '6', '5']).default('27'),
+    // The Qobuz quality ids, or a Deezer format by name (MP3_320 has no id).
+    quality: z.enum(['27', '7', '6', '5', 'FLAC_24', 'FLAC', 'MP3_320', 'MP3_128']).default('27'),
     decrypted: z.enum(['0', '1', 'true', 'false']).optional().transform((v) => v === '1' || v === 'true')
 });
 
